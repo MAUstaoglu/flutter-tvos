@@ -4,6 +4,85 @@ All notable changes to flutter-tvos will be documented here.
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-07-25
+
+### Changed
+
+- Bumped the pinned Flutter SDK to **3.44.8** (`058e0af2c2b5`).
+- Engine artifacts are now `v1.0.1-flutter3.44.8`, rebuilt from source against
+  the 3.44.8 tree rather than republished.
+
+The range is quoted from 3.44.6 rather than 3.44.7 because the 3.44.7 artifacts
+were republished 3.44.6 binaries, so 3.44.6 is the last version whose engine was
+actually compiled.
+
+Nothing in that range changes tvOS behaviour. `DEPS` is unchanged, so Dart stays
+at `d684a576` (a gclient `dart_revision` pin, not a submodule) and the SDK hash
+our AOT artifacts embed does not move. The engine-source changes are Android-side
+(`AccessibilityBridge.java`, `FlutterRenderer.java`, the Android toolchain GN
+file), an ASan-only copy rule in `darwin/ios/BUILD.gn`, a host-architecture fix
+for the clang path in `copy_info_plist.py`, plus test- and CI-only files.
+`impeller/` is untouched.
+
+One of those does reach the shipped framework, and it accounts for the size
+delta: `copy_info_plist.py` generates the `Info.plist` embedded in
+`Flutter.framework`, and in this range its `subprocess.check_output` gained
+`text=True`, changing the recorded clang version from a bytes repr to a plain
+string. The rebuilt zips therefore differ from 3.44.7 by a small, explained
+amount rather than by build noise:
+
+    host_debug_unopt.zip           +3        (no framework)
+    host_release.zip               +4        (no framework)
+    tvos_debug_sim_arm64.zip     +546
+    tvos_profile_arm64.zip      +1191
+    tvos_debug_arm64.zip        +1193
+    tvos_release_arm64.zip      +1204
+
+The two host zips embed no `Flutter.framework` and moved 3-4 bytes; all four
+that do embed one moved 546-1204.
+
+On the tooling side, 3.44.8 changes `UnpackDarwin.thinFramework` to run
+`lipo -verify_arch` once per architecture (an Xcode 27 fix). flutter-tvos does
+not use `UnpackDarwin` — it copies the engine framework itself — so nothing
+needed mirroring.
+
+The upstream build-graph types this CLI depends on are byte-identical to
+3.44.7, so the tvOS overrides are unchanged. Note the relationships differ, and
+they carry different risk on a future upgrade: `TvosKernelSnapshot`,
+`TvosCopyFlutterBundle` and `TvosAotElfRelease` are true subclasses and inherit
+upstream fixes, whereas `TvosDartPluginRegistrantTarget` extends `Target`
+directly and *replaces* the stock `DartPluginRegistrantTarget` — a replacement
+inherits nothing, so upstream drift there is a behavioural risk rather than a
+non-event. `tvosGenSnapshotArgs` similarly mirrors `AOTSnapshotter.build` in
+`base/build.dart` (untouched in this range) and belongs on the same
+keep-in-sync checklist.
+
+Verified against the freshly built artifacts, extracted through `precache`
+after clearing `engine_artifacts/` so no stale extraction could be reused:
+
+    verify_artifacts.sh   all checks pass, including the designated-requirement
+                          origin signature, the on-device JIT RWX fix, and the
+                          platform-identity patch in both host SDKs
+    dart analyze lib/     0 errors, 0 warnings (135 infos)
+    CLI suite             297 passed
+    JIT/debug, tvOS 17.5 simulator
+                          builds, installs, launches and renders; zero
+                          "Target OS is incompatible" errors; 10/10 FFI symbols
+                          exported; hot reload and hot restart both verified by
+                          asserting the reloaded code actually ran
+    Apple TV 4K, tvOS 26.5
+                          debug/JIT (including hot reload over the wireless
+                          tunnel), profile and release: install, launch, render,
+                          10/10 FFI symbols in each
+
+Platform identity in all four of those modes:
+`Platform.operatingSystem == "tvos"`, `Platform.isIOS`, `Platform.isTvOS` and
+the package-level `FlutterTvosPlatform.isTvos` all true, with
+`defaultTargetPlatform == TargetPlatform.iOS`.
+
+The 17.5 run is the one that matters for shaders: tvOS 26 tolerates a wrong
+metallib platform triple and older runtimes do not.
+
 ## [1.4.2] - 2026-07-21
 
 ### Changed

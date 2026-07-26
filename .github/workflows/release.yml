@@ -19,7 +19,12 @@ jobs:
           FLUTTER_COMMIT=$(cat bin/internal/flutter.version | tr -d '[:space:]')
           git clone --depth=1 https://github.com/flutter/flutter.git
           cd flutter
-          git fetch --depth=1 origin "$FLUTTER_COMMIT"
+          # --tags is required so `git describe --tags` can resolve the SDK
+          # version. Without it the checkout reports 0.0.0-unknown, which
+          # `dart test` does not care about but `flutter test` does: it runs
+          # pub resolution, and any package with a `flutter:` SDK constraint
+          # fails version solving. Same reason bin/internal/shared.sh passes it.
+          git fetch --depth=1 --tags origin "$FLUTTER_COMMIT"
           git checkout "$FLUTTER_COMMIT"
 
       - name: Resolve dependencies
@@ -34,6 +39,12 @@ jobs:
         env:
           PUB_OFFLINE: "1"
         run: flutter/bin/dart test test/
+
+      # Path-scoped to the root suite, so the bundled package's 103 widget
+      # tests need their own step with the flutter runner. See test.yml.
+      - name: Run package tests
+        working-directory: packages/flutter_tvos
+        run: ../../flutter/bin/flutter test
 
       - name: Run dart analyze
         run: flutter/bin/dart analyze lib/
