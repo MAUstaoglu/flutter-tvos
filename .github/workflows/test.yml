@@ -17,7 +17,12 @@ jobs:
           FLUTTER_COMMIT=$(cat bin/internal/flutter.version | tr -d '[:space:]')
           git clone --depth=1 https://github.com/flutter/flutter.git
           cd flutter
-          git fetch --depth=1 origin "$FLUTTER_COMMIT"
+          # --tags is required so `git describe --tags` can resolve the SDK
+          # version. Without it the checkout reports 0.0.0-unknown, which
+          # `dart test` does not care about but `flutter test` does: it runs
+          # pub resolution, and any package with a `flutter:` SDK constraint
+          # fails version solving. Same reason bin/internal/shared.sh passes it.
+          git fetch --depth=1 --tags origin "$FLUTTER_COMMIT"
           git checkout "$FLUTTER_COMMIT"
 
       # Resolve dependencies before running tests. Without an explicit
@@ -40,6 +45,17 @@ jobs:
           PUB_OFFLINE: "1"
         run: flutter/bin/dart test test/
 
+      # The step above is path-scoped to the root suite, so the bundled
+      # package's 103 tests never ran. They are widget tests and need the
+      # flutter runner rather than `dart test`. Among them is
+      # rcu/protocol_drift_test.dart, which pins the RCU wire protocol
+      # against FlutterTvRemoteProtocol.h — the test most likely to catch
+      # engine-side drift on a version bump, and precisely what CI should
+      # be checking on a PR that moves the engine.
+      - name: Run package tests
+        working-directory: packages/flutter_tvos
+        run: ../../flutter/bin/flutter test
+
   analyze:
     runs-on: macos-latest
     steps:
@@ -50,7 +66,12 @@ jobs:
           FLUTTER_COMMIT=$(cat bin/internal/flutter.version | tr -d '[:space:]')
           git clone --depth=1 https://github.com/flutter/flutter.git
           cd flutter
-          git fetch --depth=1 origin "$FLUTTER_COMMIT"
+          # --tags is required so `git describe --tags` can resolve the SDK
+          # version. Without it the checkout reports 0.0.0-unknown, which
+          # `dart test` does not care about but `flutter test` does: it runs
+          # pub resolution, and any package with a `flutter:` SDK constraint
+          # fails version solving. Same reason bin/internal/shared.sh passes it.
+          git fetch --depth=1 --tags origin "$FLUTTER_COMMIT"
           git checkout "$FLUTTER_COMMIT"
 
       - name: Resolve dependencies
