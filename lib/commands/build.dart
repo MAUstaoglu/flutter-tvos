@@ -12,29 +12,49 @@ import '../tvos_builder.dart';
 import '../tvos_cache.dart';
 import '../tvos_plugins.dart';
 
-class TvosBuildCommand extends BuildCommand {
-  TvosBuildCommand({
-    required super.artifacts,
-    required super.cache,
-    required super.fileSystem,
-    required super.flutterVersion,
-    required super.buildSystem,
-    required super.osUtils,
-    required Logger logger,
-    required super.androidSdk,
-    required super.config,
-    required super.platform,
-    required super.processUtils,
-    required super.processManager,
-    required super.fileSystemUtils,
-    required super.templateRenderer,
-    required super.terminal,
-    required super.plistParser,
-    required super.xcode,
-    required bool verboseHelp,
-  }) : super(logger: logger, verboseHelp: verboseHelp) {
+/// `flutter-tvos build` — registers only the subcommands this toolchain
+/// actually supports.
+///
+/// Deliberately extends [FlutterCommand] rather than upstream's [BuildCommand].
+/// Inheriting the latter bought four trivial members -- a name, a description,
+/// a category and a failing `runCommand` -- and cost seventeen constructor
+/// parameters forwarded straight through, none of which this class reads. They
+/// exist to build the Android, iOS, macOS, web, Linux and Windows subcommands,
+/// so we were paying upstream's dependency-injection churn to register eleven
+/// commands a tvOS tool should not offer: `flutter-tvos build ios` would have
+/// built an iOS app against an engine compiled for tvOS. (`linux` and `windows`
+/// are in that constructor too but never reach the help on macOS.)
+///
+/// `build bundle` goes with them, despite being nominally platform-neutral.
+/// BundleBuilder resolves `globals.buildTargets.copyFlutterBundle`, and
+/// executable.dart registers upstream's BuildTargetsImpl — so it runs
+/// upstream's CopyFlutterBundle / KernelSnapshot / DartPluginRegistrantTarget,
+/// which are precisely what TvosCopyFlutterBundle, TvosKernelSnapshot and
+/// TvosDartPluginRegistrantTarget exist to replace. The bundle it produces has
+/// no `*_tvos` plugin registration, and `--target-platform` has no tvos value
+/// and defaults to android-arm. A command that silently returns the wrong
+/// answer is worse than one that is absent.
+///
+/// That forwarding was also, on its own, half the work of porting this CLI to
+/// another Flutter version -- twelve of the twenty-five analyzer errors against
+/// 3.32.8 came from this constructor. Composing instead of inheriting removes
+/// them permanently: upstream can reshape BuildCommand's injection freely now.
+class TvosBuildCommand extends FlutterCommand {
+  TvosBuildCommand({required Logger logger, required bool verboseHelp}) {
     addSubcommand(BuildTvosCommand(logger: logger, verboseHelp: verboseHelp));
   }
+
+  @override
+  final String name = 'build';
+
+  @override
+  final String description = 'Build a tvOS app.';
+
+  @override
+  String get category => FlutterCommandCategory.project;
+
+  @override
+  Future<FlutterCommandResult> runCommand() async => FlutterCommandResult.fail();
 }
 
 class BuildTvosCommand extends BuildSubCommand with TvosRequiredArtifacts {
