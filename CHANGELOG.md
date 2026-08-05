@@ -4,6 +4,65 @@ All notable changes to flutter-tvos will be documented here.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-05
+
+### Added
+
+- `flutter-tvos versions` — lists the Flutter versions this checkout can be
+  switched to, read from the repository's release tags.
+- `flutter-tvos use <version>` — switches the checkout to another Flutter
+  version, then re-bootstraps so the vendored SDK and the pinned engine
+  artifact move together. Refuses to run over uncommitted changes unless
+  `--force` is passed, and the switch is a detached checkout rather than a
+  reset, so no branch pointer is moved.
+
+### Changed
+
+- Engine artifacts updated to `v1.0.2-flutter3.44.8` (origin-signed for ITMS-91065
+  compliance, plus key-data support on the Siri Remote path). The engine now sends
+  key events on both `flutter/keyevent` and native key-data channels — apps using
+  standard `Focus`/`FocusTraversal`/`Shortcuts` still work unchanged (the framework
+  bridges either source), and the key-data channel adds future-proofing against
+  `RawKeyboard` deprecation plus correct physical codes for media keys.
+
+### Removed
+
+- `flutter-tvos build` no longer offers upstream's platform subcommands: `aar`,
+  `apk`, `appbundle`, `bundle`, `ios`, `ios-framework`, `ipa`, `macos`,
+  `macos-framework`, `swift-package` and `web`. They were inherited by accident
+  from upstream's `BuildCommand` and were never supported or tested here;
+  `build ios` in particular would have built an iOS app against an engine
+  compiled for tvOS. `build tvos` is unaffected.
+- `flutter-tvos channel` and `flutter-tvos downgrade`. Both operated on the
+  vendored SDK and broke the `flutter.version` to engine-artifact pin. Use
+  `flutter-tvos versions` and `flutter-tvos use <version>` instead.
+
+### Fixed
+
+- `flutter-tvos upgrade` no longer moves the checkout with `git reset --hard`.
+  It now uses `git checkout --force --detach`, which produces an identical
+  working tree without rewriting whatever branch happened to be checked out —
+  `reset --hard` silently discarded commits that had not been pushed, and
+  `git status` said nothing about it afterwards. The existing
+  uncommitted-changes guard and `--force` are unchanged.
+
+- `flutter-tvos create --platforms=tvos .` no longer names the project `.`.
+  The command derived the package name from the raw output-directory argument,
+  so a `.` target produced `name: .` in `pubspec.yaml` (and a `.App` widget
+  class). It now uses the same resolution as stock `flutter create`:
+  `--project-name` if given, else the `name` of an existing `pubspec.yaml`,
+  else the basename of the *normalized absolute* directory path — and the
+  result is validated, so a directory like `my-tv-app` fails with
+  "not a valid Dart package name" instead of scaffolding a broken project.
+
+  Without `--platforms=tvos` the damage was quieter but still there: upstream
+  `flutter create` resolved the Dart package name correctly, while the `tvos/`
+  runner we add on top got `CFBundleName = .` and a bundle identifier that
+  collapsed to a bare `com.example` — shared by every project created that way.
+  If you generated a project with `create .`, check
+  `tvos/Runner/Info.plist` and `PRODUCT_BUNDLE_IDENTIFIER` in
+  `tvos/Runner.xcodeproj/project.pbxproj`.
+
 ## [1.4.3] - 2026-07-25
 
 ### Changed
@@ -513,8 +572,7 @@ lldb→Xcode-debugger launch flow.
 - Updated `bin/internal/engine.version` to `v1.0.0-flutter3.44.1`.
 - Matching tvOS engine artifacts published at
   [`fluttertv/engine-artifacts@v1.0.0-flutter3.44.1`](https://github.com/fluttertv/engine-artifacts/releases/tag/v1.0.0-flutter3.44.1).
-  Engine-side changes live in
-  [`fluttertv/engine#1`](https://github.com/fluttertv/engine/pull/1):
+  Engine-side changes in that release:
   tvOS-native Impeller metallibs, and an Impeller `StrokedCircle` fix
   that no longer aborts (a debug-build `DCHECK`) when the stroke
   half-width ≥ radius — e.g. the widget inspector outlining a small

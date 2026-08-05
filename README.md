@@ -8,9 +8,9 @@ A Flutter toolchain for building and running Flutter apps on **Apple TV (tvOS)**
 
 ## Current version
 
-- flutter-tvos: `1.4.3`
+- flutter-tvos: `1.5.0`
 - Flutter SDK: `3.44.8` (`058e0af2c2b57e369d905a03ac9748b0ebf543c6`)
-- tvOS engine artifacts: `v1.0.1-flutter3.44.8` (origin-signed)
+- tvOS engine artifacts: `v1.0.2-flutter3.44.8` (origin-signed)
 
 ## Installation
 
@@ -47,6 +47,7 @@ flutter-tvos run -d <device_id> --release
 - See [Supported commands](doc/commands.md) for all available commands and usage examples.
 - See [Getting started](doc/get-started.md) to create your first app and try **hot reload**.
 - To **update** flutter-tvos to the latest released version, run `flutter-tvos upgrade` (use `flutter-tvos upgrade --verify-only` to just check).
+- To use a **different Flutter version**, run `flutter-tvos versions` to see what is supported and `flutter-tvos use <version>` to switch. Each version is its own release line, pinning the Flutter SDK and the matching tvOS engine together.
 
 ## Platform identity & limitations
 
