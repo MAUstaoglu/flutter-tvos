@@ -4,6 +4,26 @@ All notable changes to flutter-tvos will be documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped the pinned Flutter SDK to **3.44.9** (`6b182d2c7585`).
+
+  Engine artifacts stay at `v1.0.2-flutter3.44.8`. 3.44.9 pins the same Dart
+  revision (`d684a576`) as 3.44.8, so the existing artifacts remain AOT-valid
+  and no engine rebuild or re-signing is needed. The only engine-tree changes
+  in 3.44.9 are Android lint/SDK bundle files, which tvOS does not build.
+
+  The build-graph overrides in `lib/build_targets/application.dart` needed no
+  changes: 3.44.9 touches nothing under `build_system/`, and leaves
+  `KernelSnapshot.build()` and `KernelCompiler.compile` untouched.
+
+  Tooling-side, 3.44.9 adds an LLDB stop hook (`thread backtrace all` then
+  `detach`) inside `LLDB.attachAndStart`, so a crashed app no longer hangs with
+  the debugger attached. `TvosDevice` drives that same class for on-device JIT
+  debugging and picks the fix up for free — the hook only fires on a real
+  process stop, and the tvOS JIT breakpoint script returns `False` (never
+  stops), so steady-state debug sessions are unaffected.
+
 ## [1.5.0] - 2026-08-05
 
 ### Added
