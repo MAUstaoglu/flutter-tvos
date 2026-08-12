@@ -9,8 +9,12 @@ A Flutter toolchain for building and running Flutter apps on **Apple TV (tvOS)**
 ## Current version
 
 - flutter-tvos: `1.5.0`
-- Flutter SDK: `3.44.8` (`058e0af2c2b57e369d905a03ac9748b0ebf543c6`)
+- Flutter SDK: `3.44.9` (`6b182d2c7585eba26d4edce0f97630effd256c33`)
 - tvOS engine artifacts: `v1.0.2-flutter3.44.8` (origin-signed)
+
+The engine artifact tag still names 3.44.8 because 3.44.9 ships the identical
+Dart revision (`d684a576`), so the artifacts built against the 3.44.8 tree are
+byte-for-byte valid for 3.44.9 — no rebuild, no re-signing.
 
 ## Installation
 
