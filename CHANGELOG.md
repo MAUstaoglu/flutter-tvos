@@ -4,6 +4,8 @@ All notable changes to flutter-tvos will be documented here.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-08-12
+
 ### Changed
 
 - Bumped the pinned Flutter SDK to **3.44.9** (`6b182d2c7585`).
