@@ -2,7 +2,144 @@
 
 All notable changes to flutter-tvos will be documented here.
 
-## [Unreleased]
+## [1.6.0] - 2026-08-14
+
+### Changed
+
+- **The minimum tvOS deployment target is now 15.0, up from 13.0.**
+
+  Not a choice — upstream Flutter raised `ios_deployment_target` from `13.0` to
+  `15.0` between 3.44.8 and 3.47.0, and the tvOS engine takes its deployment
+  target from that same variable. The shipped `Flutter.framework` declares
+  `minos 15.0` in all four variants (the previous engine declared `12.0`).
+
+  Everything that encodes the floor moves with it, because leaving them behind
+  produced an app that *claimed* tvOS 13 while embedding a framework that
+  refuses to load below 15 — it builds and runs on any current Apple TV, so
+  nothing catches it until a user on an old OS launches the app, or App Store
+  validation rejects the archive for the `MinimumOSVersion` / `minos` mismatch
+  (ITMS-90208):
+
+  - `_kTvosMinimumOSVersion` in `lib/build_targets/application.dart`, which is
+    what `-mtvos-version-min` / `-mtvos-simulator-version-min` stamp onto the
+    AOT `App.framework`
+  - `TvosSwiftPackageManager.kDefaultDeploymentTarget`, i.e. `.tvOS("15.0")` in
+    the generated SwiftPM manifest
+  - the app template's `Podfile` and all three `TVOS_DEPLOYMENT_TARGET`
+    configurations in `Runner.xcodeproj`
+  - the generated-plugin podspec and `Package.swift` templates
+  - the bundled `flutter_tvos` podspec, and its example app
+
+  **No Apple TV hardware is dropped.** Every model that can run tvOS 13 can run
+  tvOS 15 or later, so this affects only devices that have not been updated.
+
+  Existing projects keep whatever their `tvos/` directory already declares —
+  regenerate with `flutter-tvos create .` to pick up 15.0, or raise
+  `TVOS_DEPLOYMENT_TARGET` and the `Podfile` platform line by hand.
+
+- Bumped the pinned Flutter SDK to **3.47.0** (`4cf24164`) and the tvOS engine
+  artifacts to **`engine-495915c`**.
+
+  Three upstream API changes landed in the code that deliberately shadows
+  `flutter_tools`' build graph, and none of them surfaces until a real build:
+
+  - `DartBuild` became `LinkHooks`. `TvosCopyFlutterBundle` mirrors upstream's
+    `build()`, which loads the hook result. Rename only.
+  - `LLDB` now requires an `XcodeProjectInterpreter`.
+  - `KernelSnapshot` gained a `recorded_uses.json` output, declared whenever the
+    record-use experiment is on — which is by default, on every channel.
+    `TvosKernelSnapshot` inherits that output list, so its mirrored `build()`
+    has to produce the file (`--recorded-uses` in AOT, an empty file in JIT) or
+    the build fails on an output nothing wrote.
+
+  Platform identity holds on 3.47.0: `os=tvos isIOS=true isTvOS=true
+  target=TargetPlatform.iOS`, verified on a tvOS 17.5 simulator and a physical
+  Apple TV 4K in debug, profile and release. The `targetOS: null` plus
+  patched-compile-SDK path still keeps the platform getters runtime-resolved
+  rather than const-folded to `ios` under AOT.
+
+- Engine artifact releases are now tagged with the engine repository's commit
+  SHA (`engine-<sha>`) instead of `v1.0.x-flutter<version>`.
+
+  The old tag embedded a Flutter version in the artifact's identity, which went
+  stale the moment a patch set was reused across Flutter releases — 3.44.9
+  shipped on artifacts tagged 3.44.8 because the Dart revision was unchanged,
+  and the tag then actively misled. A SHA names what was built rather than what
+  it happened to be built for, matching how `flutter.version` pins the SDK. The
+  `engine-` prefix is required: GitHub rejects any ref that is exactly 40 or 64
+  hex characters as ambiguous with a commit id.
+
+### Fixed
+
+- **On-device debug: hot reload, hot restart and DevTools were silently dead.**
+
+  `flutter-tvos run -d <appletv> --debug` launches with
+  `--vm-service-host=0.0.0.0`, so the URI the Dart VM prints carries a host the
+  Mac cannot dial and has to be rewritten to the device's LAN address. That
+  rewrite got a **single 10-second mDNS query**, and when it lost the race with
+  Bonjour propagation it returned the `0.0.0.0` URI anyway. The resident runner
+  accepts it and retries forever:
+
+  ```
+  SocketException: Connection refused, address = 0.0.0.0, port = 59104
+  ```
+
+  The session looks alive — the app on the TV is completely healthy — while hot
+  reload, hot restart and DevTools do nothing, and nothing says why.
+
+  mDNS is now polled in 5-second attempts up to 60 seconds (override with
+  `FLUTTER_TVOS_MDNS_TIMEOUT_SECONDS`, which warns rather than silently
+  defaulting if given something unusable). The port match is kept so a stale
+  copy of the same bundle id still running on the TV cannot win the lookup, and
+  a first-attempt missing-permission failure no longer aborts a run that later
+  attempts would rescue.
+
+  The loop paces itself against the attempt window rather than assuming each
+  query consumed it. When macOS denies Local Network access the query fails in
+  milliseconds, so an unpaced retry would spin for the whole budget — and since
+  that path prints the permission instructions on every call, it would bury the
+  explanation under thousands of copies of another message.
+
+  When nothing resolves, the run now **exits on the explanation** naming Local
+  Network permission. Returning the dead URI let the runner retry `0.0.0.0`
+  forever; returning success with no URI was no better, because the runner turns
+  an absent URI into "connection to device ended too early" — an unrelated error
+  blaming the device connection. The app is left running on the TV either way.
+
+  `devicectl` cannot substitute for Bonjour here. A LAN-paired Apple TV reports
+  `tunnelState: "disconnected"` with no `networkAddresses` and no
+  `localHostnames` — but it *does* still list `potentialHostnames`, and those
+  `*.coredevice.local` names are registered locally by `remoted` only while a
+  tunnel to that device is up. With the tunnel down they resolve for no process
+  on the machine. Any host devicectl offers is therefore checked with a real
+  lookup before it is used, so this bonus path can never pre-empt the Bonjour
+  retries with a URI nothing can dial.
+
+  **Behaviour change for automated runs.** An mDNS miss used to degrade (the
+  session stayed up, hot reload was quietly dead); it is now a hard failure. For
+  anything running `flutter-tvos run` against a device unattended — CI without
+  Local Network permission, say — this turns a partially-working run into a
+  failing one. That is the intent, but it is a new way for such a job to go red.
+
+- The generated tvOS `dart_plugin_registrant.dart` no longer hardcodes its
+  `// @dart = 3.9` language-version marker; it is now derived from the Flutter
+  SDK in use. The hardcoded value made the kernel compile fail ("The specified
+  language version 3.9 is too high") on any Flutter shipping an older Dart.
+
+### Tests
+
+- The unit suite now runs with `TMPDIR` resolved through its symlinks.
+
+  Flutter 3.47.0 added an FS guard to the test harness that rejects writes
+  outside the system temp directory, but it resolves symlinks only when
+  computing the allowed root — not on the path it checks. On macOS `$TMPDIR` is
+  `/var/folders/…` behind a `/var` → `/private/var` symlink, so the two never
+  compare equal and roughly 30 tests fail, including ones that reach temp only
+  through `flutter_tools`' own `LocalFileSystem`. Resolving `TMPDIR` removes the
+  mismatch at the source and leaves the guard armed;
+  `FLUTTER_TEST_DISABLE_FS_GUARD` would instead switch off the thing that stops
+  a stray test writing to `$HOME`. Applied in both workflows and documented in
+  `test/README.md`.
 
 ## [1.5.1] - 2026-08-12
 
