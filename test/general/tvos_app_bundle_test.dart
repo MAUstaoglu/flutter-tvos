@@ -9,6 +9,8 @@
 //   3. flutter_assets were duplicated one level deep on rebuilds
 //      (flutter_assets/assets/assets/...).
 
+import 'dart:io' show Process, ProcessResult;
+
 import 'package:file/file.dart';
 import 'package:file/local.dart';
 import 'package:file/memory.dart';
@@ -715,6 +717,139 @@ void main() {
         isFalse,
       );
     });
+  });
+
+
+  // Asserting on the phase's *text* only proves the strings are still there.
+  // The thing that protects a release build is what the shell does, so run it:
+  // an inverted condition, or a case pattern that stopped matching Release,
+  // would leave every assertion above intact and still ship a dead app.
+  group('build-mode guard script', () {
+    const fs = LocalFileSystem();
+
+    /// The phase's `shellScript`, unescaped back into the source Xcode runs.
+    String guardScript(String pbxproj) {
+      final int phase = pbxproj.indexOf('/* Check Flutter build mode */ = {');
+      expect(phase, isNonNegative, reason: 'no build-mode guard phase found');
+      const key = 'shellScript = "';
+      final int start = pbxproj.indexOf(key, phase) + key.length;
+      final int end = pbxproj.indexOf('";', start);
+      final String escaped = pbxproj.substring(start, end);
+      final source = StringBuffer();
+      for (var i = 0; i < escaped.length; i++) {
+        if (escaped[i] != r'\') {
+          source.write(escaped[i]);
+          continue;
+        }
+        // Xcode escapes exactly \n, \" and \\ in this string.
+        final String escapee = escaped[++i];
+        source.write(escapee == 'n' ? '\n' : escapee);
+      }
+      return source.toString();
+    }
+
+    /// Runs [script] the way the build phase would, against a throwaway
+    /// project directory. [stagedMode] left null means an older CLI that never
+    /// wrote FLUTTER_BUILD_MODE.
+    ProcessResult runGuard(
+      String script, {
+      required String configuration,
+      String? stagedMode,
+      bool aotPayloadStaged = true,
+    }) {
+      final Directory projectDir =
+          fs.systemTempDirectory.createTempSync('flutter_tvos_guard.');
+      addTearDown(() => projectDir.deleteSync(recursive: true));
+      final File file = projectDir.childFile('check_flutter_build_mode.sh')
+        ..writeAsStringSync(script);
+      if (aotPayloadStaged) {
+        projectDir
+            .childDirectory('Flutter')
+            .childDirectory('App.framework')
+            .createSync(recursive: true);
+      }
+      return Process.runSync('/bin/sh', <String>[file.path], environment: <String, String>{
+        'CONFIGURATION': configuration,
+        'PROJECT_DIR': projectDir.path,
+        if (stagedMode != null) 'FLUTTER_BUILD_MODE': stagedMode,
+      });
+    }
+
+    for (final relativePath in <String>[
+      'templates/app/swift/tvos.tmpl/Runner.xcodeproj/project.pbxproj.tmpl',
+      'packages/flutter_tvos/example/tvos/Runner.xcodeproj/project.pbxproj',
+    ]) {
+      group(relativePath, () {
+        late String script;
+
+        setUp(() {
+          script = guardScript(fs.file(relativePath).readAsStringSync());
+        });
+
+        // The reported failure: archive Release after a debug run and the
+        // build ships the JIT engine, which cannot start under a distribution
+        // signature.
+        test('fails a Release build staged for debug', () {
+          final ProcessResult result =
+              runGuard(script, configuration: 'Release', stagedMode: 'debug');
+          expect(result.exitCode, 1);
+          expect(result.stdout, contains('error: '));
+          expect(result.stdout, contains('flutter-tvos build tvos --release'));
+        });
+
+        test('passes a Release build staged for release', () {
+          final ProcessResult result =
+              runGuard(script, configuration: 'Release', stagedMode: 'release');
+          expect(result.exitCode, 0, reason: result.stdout.toString());
+        });
+
+        test('passes a Debug build staged for debug', () {
+          final ProcessResult result = runGuard(script,
+              configuration: 'Debug',
+              stagedMode: 'debug',
+              aotPayloadStaged: false);
+          expect(result.exitCode, 0, reason: result.stdout.toString());
+        });
+
+        // The CLI drives profile builds through the Release configuration, so
+        // this pairing is normal and the payload is AOT either way.
+        test('only warns for a Release build staged for profile', () {
+          final ProcessResult result =
+              runGuard(script, configuration: 'Release', stagedMode: 'profile');
+          expect(result.exitCode, 0);
+          expect(result.stdout, contains('warning: '));
+          expect(result.stdout, contains('profile'));
+        });
+
+        // Upgrading the CLI without regenerating leaves an xcconfig with no
+        // FLUTTER_BUILD_MODE; that must not start failing builds.
+        test('only warns when FLUTTER_BUILD_MODE is unset', () {
+          final ProcessResult result =
+              runGuard(script, configuration: 'Release');
+          expect(result.exitCode, 0);
+          expect(result.stdout, contains('warning: '));
+          expect(result.stdout, contains('FLUTTER_BUILD_MODE'));
+        });
+
+        test('fails a Release build with no App.framework staged', () {
+          final ProcessResult result = runGuard(script,
+              configuration: 'Release',
+              stagedMode: 'release',
+              aotPayloadStaged: false);
+          expect(result.exitCode, 1);
+          expect(result.stdout, contains('App.framework'));
+        });
+
+        // Flavors add configurations we know nothing about; guessing wrong
+        // there would fail builds that are perfectly fine.
+        test('skips a configuration it does not recognize', () {
+          final ProcessResult result = runGuard(script,
+              configuration: 'Staging', stagedMode: 'debug');
+          expect(result.exitCode, 0);
+          expect(result.stdout, contains('skipping'));
+        });
+      });
+    }
   });
 
 }
