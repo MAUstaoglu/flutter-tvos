@@ -512,6 +512,7 @@ void main() {
         buildDir: '/app/build',
         buildName: '2.3.4',
         buildNumber: '17',
+        buildMode: 'release',
       );
       expect(xcconfig, contains('FLUTTER_ROOT=/opt/flutter-tvos/flutter'));
       expect(xcconfig, contains('FLUTTER_APPLICATION_PATH=/app'));
@@ -575,6 +576,7 @@ void main() {
         buildDir: buildDir,
         buildName: buildName,
         buildNumber: buildNumber,
+        buildMode: 'release',
       );
       final RegExp exportLine = RegExp(r'^export "([^"]+)"$', multiLine: true);
       for (final Match m in exportLine.allMatches(sh)) {
@@ -620,4 +622,99 @@ void main() {
       });
     }
   });
+
+  // --- #65: an Xcode archive ships whatever mode the CLI last staged --------
+  //
+  // The Runner project runs no Dart build: its phases copy the payload left in
+  // tvos/Flutter by the last `flutter-tvos build/run`, and the engine comes
+  // from the Flutter.xcframework that same run copied in. Xcode's CONFIGURATION
+  // never touches any of it, so archiving Release straight after a debug run
+  // shipped the JIT engine inside a release app -- which runs under development
+  // signing and then hangs on a blank screen once installed from TestFlight
+  // (reproduced end to end: a build with the debug engine never draws a frame,
+  // while the same source built cleanly for release runs).
+  //
+  // FLUTTER_BUILD_MODE records the staged mode; the "Check Flutter build mode"
+  // phase compares it against the configuration and fails the build.
+  group('build-mode guard', () {
+    const fs = LocalFileSystem();
+
+    test('Generated.xcconfig records the staged build mode', () {
+      for (final mode in <String>['debug', 'profile', 'release']) {
+        expect(
+          NativeTvosBundle.buildGeneratedXcconfig(
+            flutterRoot: '/opt/flutter-tvos/flutter',
+            applicationPath: '/app',
+            targetFile: 'lib/main.dart',
+            buildDir: '/app/build',
+            buildName: '1.0.0',
+            buildNumber: '1',
+            buildMode: mode,
+          ),
+          contains('FLUTTER_BUILD_MODE=$mode'),
+        );
+      }
+    });
+
+    for (final relativePath in <String>[
+      'templates/app/swift/tvos.tmpl/Runner.xcodeproj/project.pbxproj.tmpl',
+      'packages/flutter_tvos/example/tvos/Runner.xcodeproj/project.pbxproj',
+    ]) {
+      test('$relativePath fails the build on a mode mismatch', () {
+        final File file = fs.file(relativePath);
+        expect(file.existsSync(), isTrue,
+            reason: 'expected to find $relativePath from package root');
+        final String pbxproj = file.readAsStringSync();
+
+        // The phase exists and is wired into the target, not just defined.
+        expect(pbxproj, contains('name = "Check Flutter build mode";'));
+        expect(
+          pbxproj,
+          contains('AAF60000000000000000F00D /* Check Flutter build mode */,'),
+          reason: 'the phase must be listed in the target buildPhases',
+        );
+
+        // It reads the staged mode and fails, rather than only warning: a
+        // warning scrolls past in an archive log and the bad build still ships.
+        final int guardStart =
+            pbxproj.indexOf('name = "Check Flutter build mode";');
+        final int guardEnd = pbxproj.indexOf('};', guardStart);
+        final String guard = pbxproj.substring(guardStart, guardEnd);
+        expect(guard, contains(r'STAGED=\"${FLUTTER_BUILD_MODE}\"'));
+        expect(guard, contains('exit 1'));
+        expect(guard, contains('flutter-tvos build tvos --'),
+            reason: 'the error must tell the user how to fix it');
+
+        // It has to run before the phases that copy the payload in, otherwise
+        // a failing build has already written the wrong engine into the bundle.
+        expect(
+          pbxproj.indexOf('AAF60000000000000000F00D /* Check Flutter build mode */,'),
+          lessThan(pbxproj.indexOf('AAF10000000000000000F00D /* Embed App.framework */,')),
+        );
+      });
+    }
+  });
+
+  // Projects created before the guard existed keep their old phase list --
+  // project.pbxproj is written once at `create` and never rewritten on build --
+  // so the CLI warns instead, the same way it does for the other phases that
+  // arrived after 1.0.0.
+  group('pbxprojLacksBuildModeGuard', () {
+    test('true for a project without the phase', () {
+      expect(
+        NativeTvosBundle.pbxprojLacksBuildModeGuard(
+            '\t\t\t\tname = "Embed App.framework";\n'),
+        isTrue,
+      );
+    });
+
+    test('false once the phase is present', () {
+      expect(
+        NativeTvosBundle.pbxprojLacksBuildModeGuard(
+            '\t\t\t\tname = "Check Flutter build mode";\n'),
+        isFalse,
+      );
+    });
+  });
+
 }

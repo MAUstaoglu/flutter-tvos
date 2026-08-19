@@ -2,6 +2,41 @@
 
 All notable changes to flutter-tvos will be documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- **An Xcode archive no longer silently ships a payload built for a different
+  mode** (#65).
+
+  The Runner project runs no Dart build. Its phases copy whatever the last
+  `flutter-tvos build/run` staged into `tvos/Flutter`, and the engine comes from
+  the `Flutter.xcframework` that same run copied in — so Xcode's configuration
+  never had any influence on the Flutter payload. Building or archiving Release
+  after a debug run therefore shipped the **debug/JIT engine** and a
+  `kernel_blob.bin` inside a release app.
+
+  That build installs and runs fine from Xcode, because a development signature
+  permits the JIT pages the VM needs. Installed from TestFlight or the App
+  Store, where the distribution signature carries no `get-task-allow`, the VM
+  cannot get executable pages at all: the app launches, the launch screen
+  paints, and the first Flutter frame never arrives — a blank screen with no
+  crash. Nothing upstream caught it either: `altool --validate-app`, the upload
+  and App Store processing all accept such a build without a warning.
+
+  `Generated.xcconfig` now records `FLUTTER_BUILD_MODE`, and the app template
+  gained a **"Check Flutter build mode"** build phase — first in the target, so
+  it runs before anything copies a payload in — that fails the build when the
+  staged mode does not match the configuration, naming the exact command to
+  run. A profile payload under the Release configuration is only a warning
+  (`flutter-tvos` drives profile builds through that configuration, and they do
+  run), and an unset `FLUTTER_BUILD_MODE` from an older CLI is a warning too.
+
+  Existing projects keep their old phase list — `project.pbxproj` is written
+  once at `create` time and never rewritten on build — so device builds now
+  print a warning naming the risk; regenerate the tvOS project
+  (`flutter-tvos create .`) to get the guard itself.
+
 ## [1.6.0] - 2026-08-14
 
 ### Changed

@@ -550,6 +550,9 @@ class NativeTvosBundle extends Target {
       // Warn if the app-icon catalog predates the completed template and would
       // fail App Store asset validation.
       _warnIfIncompleteAppIconCatalog(tvosProjectDir);
+      // Warn if the project predates the build-mode guard, so an archive taken
+      // straight from Xcode can still ship a payload from the wrong mode.
+      _warnIfMissingBuildModeGuard(tvosProjectDir);
     }
 
     final platformSuffix = buildInfo.simulator
@@ -1045,6 +1048,57 @@ class NativeTvosBundle extends Target {
     }
     return false;
   }
+
+  /// Warns if the Runner project has no "Check Flutter build mode" phase, so
+  /// an `xcodebuild archive` run straight from Xcode cannot notice that the
+  /// staged Flutter payload was built for a different mode.
+  ///
+  /// The Xcode project runs no Dart build: its phases copy whatever the last
+  /// `flutter-tvos build/run` left in `tvos/Flutter`, and the engine comes from
+  /// the `Flutter.xcframework` that same run copied in. Xcode's configuration
+  /// has no influence on any of it, so archiving Release after a debug run
+  /// ships the JIT engine inside a release app — which still launches under
+  /// development signing and then hangs on a blank screen once installed from
+  /// TestFlight or the App Store (issue #65). `project.pbxproj` is written once
+  /// at `create` time and never rewritten on build, so existing projects keep
+  /// the old phase list and need regenerating to gain the guard.
+  void _warnIfMissingBuildModeGuard(Directory tvosProjectDir) {
+    final File pbxproj = tvosProjectDir
+        .childDirectory('Runner.xcodeproj')
+        .childFile('project.pbxproj');
+    if (!pbxproj.existsSync()) {
+      return;
+    }
+    String contents;
+    try {
+      contents = pbxproj.readAsStringSync();
+    } on FileSystemException {
+      return; // Unreadable — don't crash the build over an advisory check.
+    }
+    if (!pbxprojLacksBuildModeGuard(contents)) {
+      return;
+    }
+    globals.logger.printWarning(
+      'Warning: this project\'s Xcode project (Runner.xcodeproj) has no '
+      '"Check Flutter build mode" build phase. Building or archiving directly '
+      'from Xcode copies whatever "flutter-tvos build/run" staged last, '
+      'regardless of the configuration Xcode is building — so archiving '
+      'Release after a debug run ships the debug engine, which runs locally '
+      'and then hangs on a blank screen when installed from TestFlight or the '
+      'App Store.\n'
+      'Either run "flutter-tvos build tvos --release" immediately before every '
+      'archive, or regenerate the tvOS project ("flutter-tvos create ." in the '
+      'project root) to get a build phase that fails the build on a mismatch.',
+    );
+  }
+
+  /// True if [pbxprojContents] has no "Check Flutter build mode" phase.
+  ///
+  /// Keys on the phase *name* as the template writes it, which is also what a
+  /// hand-added phase would have to be called to do the same job.
+  @visibleForTesting
+  static bool pbxprojLacksBuildModeGuard(String pbxprojContents) =>
+      !pbxprojContents.contains('Check Flutter build mode');
 
   /// Warns if the project's `Podfile` predates the SPM skip guard while SPM
   /// plugins are present. The current Podfile skips any plugin that ships a
@@ -1633,6 +1687,7 @@ class NativeTvosBundle extends Target {
             buildDir: buildDir,
             buildName: buildName,
             buildNumber: buildNumber,
+            buildMode: buildInfo.buildInfo.modeName,
           ),
         );
 
@@ -1687,6 +1742,7 @@ class NativeTvosBundle extends Target {
     required String buildDir,
     required String buildName,
     required String buildNumber,
+    required String buildMode,
   }) {
     return (StringBuffer()
           ..writeln('FLUTTER_ROOT=$flutterRoot')
@@ -1695,6 +1751,12 @@ class NativeTvosBundle extends Target {
           ..writeln('FLUTTER_BUILD_DIR=$buildDir')
           ..writeln('FLUTTER_BUILD_NAME=$buildName')
           ..writeln('FLUTTER_BUILD_NUMBER=$buildNumber')
+          // Records which mode produced the payload currently staged in
+          // tvos/Flutter (engine, App.framework, flutter_assets). The Xcode
+          // project runs no Dart build, so this is the only thing a build phase
+          // can compare its CONFIGURATION against — see the "Check Flutter
+          // build mode" phase in the app template.
+          ..writeln('FLUTTER_BUILD_MODE=$buildMode')
           ..writeln('COCOAPODS_PARALLEL_CODE_SIGN=true'))
         .toString();
   }

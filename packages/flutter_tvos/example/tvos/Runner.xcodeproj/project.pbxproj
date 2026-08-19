@@ -120,6 +120,7 @@
 			buildConfigurationList = 97C147051CF9000082B4168C /* Build configuration list for PBXNativeTarget "Runner" */;
 			buildPhases = (
 				75D2D46BC28F65470A487BFA /* [CP] Check Pods Manifest.lock */,
+				AAF60000000000000000F00D /* Check Flutter build mode */,
 				97C146EA1CF9000082B4168C /* Sources */,
 				97C146EB1CF9000082B4168C /* Frameworks */,
 				97C146EC1CF9000082B4168C /* Resources */,
@@ -227,6 +228,22 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "#!/bin/sh\n# Copy flutter_assets into the app bundle\nFLUTTER_ASSETS_SRC=\"${PROJECT_DIR}/Flutter/flutter_assets\"\nDEST=\"${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/flutter_assets\"\nif [ -d \"${FLUTTER_ASSETS_SRC}\" ]; then\n  echo \"Copying flutter_assets to app bundle...\"\n  rsync -av --delete \"${FLUTTER_ASSETS_SRC}/\" \"${DEST}/\"\nelse\n  echo \"warning: flutter_assets not found at ${FLUTTER_ASSETS_SRC}\"\nfi\n";
+		};
+		AAF60000000000000000F00D /* Check Flutter build mode */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/Flutter/Generated.xcconfig",
+			);
+			name = "Check Flutter build mode";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "#!/bin/sh\n# Fail the build when the Flutter payload staged in tvos/Flutter was produced\n# for a different build mode than the one Xcode is building.\n#\n# This project runs no Dart build. \"Embed App.framework\" and \"Copy\n# flutter_assets\" copy whatever the last `flutter-tvos build/run` staged, and\n# the engine comes from the Flutter.xcframework that same run copied in -- so\n# Xcode's CONFIGURATION has no influence on the Flutter payload at all.\n# Archiving Release right after a debug run therefore ships the JIT engine and\n# a kernel_blob inside a release app. That still installs and launches under\n# development signing, then hangs on a blank screen once installed from\n# TestFlight or the App Store, where the distribution signature carries no\n# get-task-allow and the VM cannot get executable pages.\n#\n# FLUTTER_BUILD_MODE comes from Flutter/Generated.xcconfig, which every CLI\n# build rewrites, so it always describes the payload staged right now.\ncase \"${CONFIGURATION}\" in\n  Debug*)   EXPECTED=\"debug\" ;;\n  Profile*) EXPECTED=\"profile\" ;;\n  Release*) EXPECTED=\"release\" ;;\n  *)\n    echo \"note: unrecognized configuration \\\"${CONFIGURATION}\\\" - skipping the Flutter build-mode check.\"\n    exit 0\n    ;;\nesac\n\nSTAGED=\"${FLUTTER_BUILD_MODE}\"\nif [ -z \"${STAGED}\" ]; then\n  echo \"warning: Flutter/Generated.xcconfig does not set FLUTTER_BUILD_MODE, so the staged Flutter payload cannot be checked against the ${CONFIGURATION} configuration. Run \\\"flutter-tvos build tvos --${EXPECTED}\\\" to regenerate it.\"\nelif [ \"${STAGED}\" != \"${EXPECTED}\" ]; then\n  # flutter-tvos drives profile builds through the Release configuration, so a\n  # profile payload under Release is expected. It is AOT-compiled and does run,\n  # so warn rather than fail. Every other mismatch means debug/JIT payload in an\n  # AOT app (or the reverse), which cannot start where it is going.\n  if [ \"${EXPECTED}\" = \"release\" ] && [ \"${STAGED}\" = \"profile\" ]; then\n    echo \"warning: the Flutter payload in ${PROJECT_DIR}/Flutter was built in profile mode while Xcode builds ${CONFIGURATION}. Profile builds carry the VM Service and are not meant for the App Store - run \\\"flutter-tvos build tvos --release\\\" before archiving.\"\n  else\n    echo \"error: the Flutter payload in ${PROJECT_DIR}/Flutter was built in ${STAGED} mode, but Xcode is building the ${CONFIGURATION} configuration (${EXPECTED} mode).\"\n    echo \"error: this project copies the staged payload as-is, so the build would ship the ${STAGED} engine and Dart code inside a ${EXPECTED} app. It would install and run from Xcode, then hang on a blank screen when installed from TestFlight or the App Store.\"\n    echo \"error: run \\\"flutter-tvos build tvos --${EXPECTED}\\\" first, then build or archive again.\"\n    exit 1\n  fi\nfi\n\nif [ \"${EXPECTED}\" != \"debug\" ] && [ ! -d \"${PROJECT_DIR}/Flutter/App.framework\" ]; then\n  echo \"error: a ${EXPECTED} build needs the AOT App.framework, but ${PROJECT_DIR}/Flutter/App.framework does not exist. Run \\\"flutter-tvos build tvos --${EXPECTED}\\\" first.\"\n  exit 1\nfi\n";
 		};
 		AAF10000000000000000F00D /* Embed App.framework */ = {
 			isa = PBXShellScriptBuildPhase;
