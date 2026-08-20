@@ -436,6 +436,15 @@ class NativeTvosBundle extends Target {
       throw Exception('Missing tvOS project directory');
     }
 
+    // 0. Invalidate the staged-payload marker before anything is replaced.
+    //    Everything from here to step 5 mutates tvos/Flutter; an exception or a
+    //    Ctrl-C in that window would otherwise leave Generated.xcconfig
+    //    describing the payload that was there before. Concretely: a release
+    //    build followed by an interrupted debug build leaves the JIT engine and
+    //    a kernel_blob staged under a marker still reading `release`, and the
+    //    Xcode guard then blesses exactly the archive it exists to stop.
+    _generateXcconfigs(project, tvosProjectDir, stagedModeOverride: 'unknown');
+
     // 1. Copy Flutter.framework from engine artifacts
     _copyFlutterFramework(tvosProjectDir);
 
@@ -1086,9 +1095,11 @@ class NativeTvosBundle extends Target {
       'Release after a debug run ships the debug engine, which runs locally '
       'and then hangs on a blank screen when installed from TestFlight or the '
       'App Store.\n'
-      'Either run "flutter-tvos build tvos --release" immediately before every '
-      'archive, or regenerate the tvOS project ("flutter-tvos create ." in the '
-      'project root) to get a build phase that fails the build on a mismatch.',
+      'Run "flutter-tvos build tvos --release" immediately before every '
+      'archive. That is the whole mitigation, and it works today.\n'
+      'To get the build phase itself, add it by hand (doc/publish-app.md shows '
+      'the script) or move tvos/ aside and re-create the project — '
+      '"flutter-tvos create ." will not add it to a tvos/ that already exists.',
     );
   }
 
@@ -1648,7 +1659,18 @@ class NativeTvosBundle extends Target {
   }
 
   /// Generates Generated.xcconfig, Debug.xcconfig, and Release.xcconfig.
-  void _generateXcconfigs(FlutterProject project, Directory tvosProjectDir) {
+  /// Writes `Generated.xcconfig` and the Debug/Release includes.
+  ///
+  /// [stagedModeOverride] forces the staged-payload keys to a value other than
+  /// the mode being built. `build()` passes `unknown` before it touches
+  /// anything in `tvos/Flutter`, so that a build interrupted midway through
+  /// staging leaves a marker the guard rejects rather than one that still
+  /// describes the payload it replaced.
+  void _generateXcconfigs(
+    FlutterProject project,
+    Directory tvosProjectDir, {
+    String? stagedModeOverride,
+  }) {
     final Directory flutterDir = tvosProjectDir.childDirectory('Flutter');
     flutterDir.createSync(recursive: true);
 
@@ -1687,7 +1709,8 @@ class NativeTvosBundle extends Target {
             buildDir: buildDir,
             buildName: buildName,
             buildNumber: buildNumber,
-            buildMode: buildInfo.buildInfo.modeName,
+            buildMode: stagedModeOverride ?? buildInfo.buildInfo.modeName,
+            stagedSdk: stagedModeOverride != null ? 'unknown' : buildInfo.sdkName,
           ),
         );
 
@@ -1743,6 +1766,7 @@ class NativeTvosBundle extends Target {
     required String buildName,
     required String buildNumber,
     required String buildMode,
+    required String stagedSdk,
   }) {
     return (StringBuffer()
           ..writeln('FLUTTER_ROOT=$flutterRoot')
@@ -1751,12 +1775,28 @@ class NativeTvosBundle extends Target {
           ..writeln('FLUTTER_BUILD_DIR=$buildDir')
           ..writeln('FLUTTER_BUILD_NAME=$buildName')
           ..writeln('FLUTTER_BUILD_NUMBER=$buildNumber')
-          // Records which mode produced the payload currently staged in
-          // tvos/Flutter (engine, App.framework, flutter_assets). The Xcode
-          // project runs no Dart build, so this is the only thing a build phase
-          // can compare its CONFIGURATION against — see the "Check Flutter
-          // build mode" phase in the app template.
-          ..writeln('FLUTTER_BUILD_MODE=$buildMode')
+          // Records what is currently staged in tvos/Flutter (engine,
+          // App.framework, flutter_assets). The Xcode project runs no Dart
+          // build, so this is the only thing a build phase can compare its
+          // CONFIGURATION against — see the "Check Flutter build mode" phase
+          // in the app template.
+          //
+          // Deliberately NOT named FLUTTER_BUILD_MODE. That name is upstream's
+          // user-facing override (`${FLUTTER_BUILD_MODE:-${CONFIGURATION}}`),
+          // which Flutter users with flavors or custom configurations are told
+          // to set themselves — and a target-level definition shadows this
+          // file, since Generated.xcconfig is only the base configuration. The
+          // guard would then compare the user's declared intent against itself,
+          // match every time, and pass on exactly the archive it exists to stop.
+          //
+          // `unknown` is written at the start of every build and replaced only
+          // once staging has finished, so an interrupted build leaves a value
+          // that fails closed rather than one describing a payload that is no
+          // longer on disk.
+          ..writeln('FLUTTER_STAGED_BUILD_MODE=$buildMode')
+          // Which SDK the staged payload was built against, so the guard can
+          // catch a simulator payload being archived for a device.
+          ..writeln('FLUTTER_STAGED_SDK=$stagedSdk')
           ..writeln('COCOAPODS_PARALLEL_CODE_SIGN=true'))
         .toString();
   }

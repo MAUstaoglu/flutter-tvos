@@ -515,6 +515,7 @@ void main() {
         buildName: '2.3.4',
         buildNumber: '17',
         buildMode: 'release',
+        stagedSdk: 'appletvos',
       );
       expect(xcconfig, contains('FLUTTER_ROOT=/opt/flutter-tvos/flutter'));
       expect(xcconfig, contains('FLUTTER_APPLICATION_PATH=/app'));
@@ -579,6 +580,7 @@ void main() {
         buildName: buildName,
         buildNumber: buildNumber,
         buildMode: 'release',
+        stagedSdk: 'appletvos',
       );
       final RegExp exportLine = RegExp(r'^export "([^"]+)"$', multiLine: true);
       for (final Match m in exportLine.allMatches(sh)) {
@@ -652,8 +654,9 @@ void main() {
             buildName: '1.0.0',
             buildNumber: '1',
             buildMode: mode,
+            stagedSdk: 'appletvos',
           ),
-          contains('FLUTTER_BUILD_MODE=$mode'),
+          contains('FLUTTER_STAGED_BUILD_MODE=$mode'),
         );
       }
     });
@@ -682,7 +685,13 @@ void main() {
             pbxproj.indexOf('name = "Check Flutter build mode";');
         final int guardEnd = pbxproj.indexOf('};', guardStart);
         final String guard = pbxproj.substring(guardStart, guardEnd);
-        expect(guard, contains(r'STAGED=\"${FLUTTER_BUILD_MODE}\"'));
+        expect(guard, contains(r'STAGED=\"${FLUTTER_STAGED_BUILD_MODE}\"'),
+            reason: 'the marker must not be FLUTTER_BUILD_MODE, which is '
+                'upstream\'s user-facing override and can be set at target '
+                'level, shadowing Generated.xcconfig');
+        // The payload check is what survives a stale marker, so assert it is
+        // present rather than trusting the marker comparison alone.
+        expect(guard, contains('kernel_blob.bin'));
         expect(guard, contains('exit 1'));
         expect(guard, contains('flutter-tvos build tvos --'),
             reason: 'the error must tell the user how to fix it');
@@ -756,6 +765,10 @@ void main() {
       required String configuration,
       String? stagedMode,
       bool aotPayloadStaged = true,
+      bool jitPayloadStaged = false,
+      String? stagedSdk,
+      String? platformName,
+      bool optOut = false,
     }) {
       final Directory projectDir =
           fs.systemTempDirectory.createTempSync('flutter_tvos_guard.');
@@ -768,10 +781,20 @@ void main() {
             .childDirectory('App.framework')
             .createSync(recursive: true);
       }
+      if (jitPayloadStaged) {
+        projectDir
+            .childDirectory('Flutter')
+            .childDirectory('flutter_assets')
+            .childFile('kernel_blob.bin')
+            .createSync(recursive: true);
+      }
       return Process.runSync('/bin/sh', <String>[file.path], environment: <String, String>{
         'CONFIGURATION': configuration,
         'PROJECT_DIR': projectDir.path,
-        if (stagedMode != null) 'FLUTTER_BUILD_MODE': stagedMode,
+        if (stagedMode != null) 'FLUTTER_STAGED_BUILD_MODE': stagedMode,
+        if (stagedSdk != null) 'FLUTTER_STAGED_SDK': stagedSdk,
+        if (platformName != null) 'PLATFORM_NAME': platformName,
+        if (optOut) 'FLUTTER_STAGED_BUILD_MODE_CHECK': 'off',
       });
     }
 
@@ -821,14 +844,109 @@ void main() {
           expect(result.stdout, contains('profile'));
         });
 
-        // Upgrading the CLI without regenerating leaves an xcconfig with no
-        // FLUTTER_BUILD_MODE; that must not start failing builds.
-        test('only warns when FLUTTER_BUILD_MODE is unset', () {
-          final ProcessResult result =
-              runGuard(script, configuration: 'Release');
+        // An unset marker is the state after `flutter-tvos clean`, on a fresh
+        // checkout (Generated.xcconfig is gitignored) and with a CLI older than
+        // this phase. Under Debug the cost of guessing wrong is a launch
+        // failure on a device in your hand, so it warns...
+        test('only warns for a Debug build with no staged mode recorded', () {
+          final ProcessResult result = runGuard(script,
+              configuration: 'Debug', aotPayloadStaged: false);
           expect(result.exitCode, 0);
           expect(result.stdout, contains('warning: '));
-          expect(result.stdout, contains('FLUTTER_BUILD_MODE'));
+        });
+
+        // ...but under Release it is a submission that dies after review, and
+        // the App.framework backstop cannot catch it: nothing in a normal build
+        // ever deletes App.framework, so a release one survives any number of
+        // debug builds and is still sitting there.
+        test('fails a Release build with no staged mode recorded', () {
+          final ProcessResult result =
+              runGuard(script, configuration: 'Release');
+          expect(result.exitCode, 1);
+          expect(result.stdout, contains('error: '));
+        });
+
+        test('fails an unrecorded Release build even with App.framework staged',
+            () {
+          final ProcessResult result = runGuard(script,
+              configuration: 'Release', aotPayloadStaged: true);
+          expect(result.exitCode, 1);
+        });
+
+        // The payload check exists because the marker can go stale while what
+        // is on disk cannot: a kernel_blob under a non-debug configuration is
+        // proof of a JIT payload whatever the marker claims.
+        test('fails a Release build with a JIT payload despite a release marker',
+            () {
+          final ProcessResult result = runGuard(script,
+              configuration: 'Release',
+              stagedMode: 'release',
+              jitPayloadStaged: true);
+          expect(result.exitCode, 1);
+          expect(result.stdout, contains('kernel_blob.bin'));
+        });
+
+        // A simulator payload archives for a device just as quietly as a debug
+        // one ships under Release.
+        test('fails when the staged SDK does not match the platform', () {
+          final ProcessResult result = runGuard(script,
+              configuration: 'Release',
+              stagedMode: 'release',
+              stagedSdk: 'appletvsimulator',
+              platformName: 'appletvos');
+          expect(result.exitCode, 1);
+          expect(result.stdout, contains('appletvsimulator'));
+        });
+
+        test('passes when the staged SDK matches the platform', () {
+          final ProcessResult result = runGuard(script,
+              configuration: 'Release',
+              stagedMode: 'release',
+              stagedSdk: 'appletvos',
+              platformName: 'appletvos');
+          expect(result.exitCode, 0, reason: result.stdout.toString());
+        });
+
+        // The four cases below exist because mutating the script to enforce
+        // Release only, or deleting the Profile arm outright, previously left
+        // every test green.
+        test('fails a Debug build staged for release', () {
+          final ProcessResult result =
+              runGuard(script, configuration: 'Debug', stagedMode: 'release');
+          expect(result.exitCode, 1);
+        });
+
+        test('fails a Debug build staged for profile', () {
+          final ProcessResult result =
+              runGuard(script, configuration: 'Debug', stagedMode: 'profile');
+          expect(result.exitCode, 1);
+        });
+
+        test('fails a Profile build staged for debug', () {
+          final ProcessResult result =
+              runGuard(script, configuration: 'Profile', stagedMode: 'debug');
+          expect(result.exitCode, 1);
+        });
+
+        test('passes a Profile build staged for profile', () {
+          final ProcessResult result =
+              runGuard(script, configuration: 'Profile', stagedMode: 'profile');
+          expect(result.exitCode, 0, reason: result.stdout.toString());
+        });
+
+        test('skips when CONFIGURATION is unset', () {
+          final ProcessResult result =
+              runGuard(script, configuration: '', stagedMode: 'debug');
+          expect(result.exitCode, 0);
+          expect(result.stdout, contains('warning: '));
+        });
+
+        test('honours the opt-out setting', () {
+          final ProcessResult result = runGuard(script,
+              configuration: 'Release',
+              stagedMode: 'debug',
+              optOut: true);
+          expect(result.exitCode, 0);
         });
 
         test('fails a Release build with no App.framework staged', () {
@@ -847,6 +965,8 @@ void main() {
               configuration: 'Staging', stagedMode: 'debug');
           expect(result.exitCode, 0);
           expect(result.stdout, contains('skipping'));
+          // warning, not note: note is dropped by xcbeautify and most CI filters.
+          expect(result.stdout, contains('warning: '));
         });
       });
     }

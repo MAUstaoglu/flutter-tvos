@@ -40,9 +40,10 @@ flutter-tvos run -d <device_id> --release
 > app installs and runs from Xcode, passes App Store validation and processing,
 > and then shows nothing but a blank screen when a tester installs it from
 > TestFlight. Projects generated from the current template fail the build
-> instead (the "Check Flutter build mode" phase); older ones do not, so
-> regenerate with `flutter-tvos create .` or re-run the release build every
-> time.
+> instead (the "Check Flutter build mode" phase). Older projects do not have
+> it, and `flutter-tvos create .` will not add it — that command leaves an
+> existing `tvos/` untouched. Re-run the release build immediately before every
+> archive, or add the phase by hand.
 
 ### Using Xcode (recommended)
 

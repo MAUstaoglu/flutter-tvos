@@ -50,8 +50,10 @@ All notable changes to flutter-tvos will be documented here.
 
   Existing projects keep their old phase list — `project.pbxproj` is written
   once at `create` time and never rewritten on build — so device builds now
-  print a warning naming the risk; regenerate the tvOS project
-  (`flutter-tvos create .`) to get the guard itself.
+  print a warning naming the risk. The mitigation that works everywhere is to
+  run the release build immediately before each archive; `flutter-tvos create .`
+  will **not** add the phase to a project that already has a `tvos/` directory,
+  and now says so rather than exiting silently.
 
 ## [1.6.0] - 2026-08-14
 
