@@ -1230,6 +1230,26 @@ class NativeTvosBundle extends Target {
     }
 
     copyFlutterAssetsTree(source: flutterAssetsSource, target: flutterAssetsTarget);
+
+    // kernel_blob.bin is the JIT payload and is written only by a debug build,
+    // but `build/tvos/` is shared across modes and nothing there removes it. A
+    // profile or release build run after any debug build therefore mirrored a
+    // stale 40+ MB debug kernel into the staged assets and shipped it inside an
+    // AOT app, where the engine ignores it entirely — dead weight in the bundle,
+    // and the app's Dart kernel handed out with a release build.
+    //
+    // Drop it here rather than cleaning the shared output directory, which
+    // incremental builds rely on.
+    if (!buildInfo.buildInfo.isDebug) {
+      final File staleKernel = flutterAssetsTarget.childFile('kernel_blob.bin');
+      if (staleKernel.existsSync()) {
+        staleKernel.deleteSync();
+        globals.logger.printTrace(
+          'Removed kernel_blob.bin staged by an earlier debug build',
+        );
+      }
+    }
+
     globals.logger.printTrace('Copied flutter_assets to ${flutterAssetsTarget.path}');
   }
 
