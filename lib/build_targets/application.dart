@@ -1763,21 +1763,29 @@ class NativeTvosBundle extends Target {
           ),
         );
 
-    // Debug.xcconfig — always write with Pods include so CocoaPods sandbox check passes.
+    // Debug.xcconfig / Release.xcconfig — always written with the Pods include
+    // so the CocoaPods sandbox check passes.
     flutterDir
         .childFile('Debug.xcconfig')
-        .writeAsStringSync(
-          '#include "Generated.xcconfig"\n'
-          '#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"\n',
-        );
-
-    // Release.xcconfig — same.
+        .writeAsStringSync(buildModeXcconfig('debug'));
     flutterDir
         .childFile('Release.xcconfig')
-        .writeAsStringSync(
-          '#include "Generated.xcconfig"\n'
-          '#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"\n',
-        );
+        .writeAsStringSync(buildModeXcconfig('release'));
+  }
+
+  /// Body of `tvos/Flutter/<Mode>.xcconfig`.
+  ///
+  /// The `Generated.xcconfig` include is the first link in the chain that
+  /// carries `FLUTTER_STAGED_BUILD_MODE` to the "Check Flutter build mode"
+  /// build phase: Generated.xcconfig → this file → the target configuration's
+  /// `baseConfigurationReference`. Break any link and the phase sees an unset
+  /// marker, which is a hard failure for a release build and a warning for a
+  /// debug one — so the chain is asserted end to end in the tests rather than
+  /// left to be discovered at archive time.
+  @visibleForTesting
+  static String buildModeXcconfig(String mode) {
+    return '#include "Generated.xcconfig"\n'
+        '#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.$mode.xcconfig"\n';
   }
 
   /// Body of `tvos/Flutter/Generated.xcconfig`.

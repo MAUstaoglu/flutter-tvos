@@ -20,6 +20,79 @@ import '../src/common.dart';
 
 void main() {
   // --- Issue #3: flutter_assets duplication -------------------------------
+  // The guard reads FLUTTER_STAGED_BUILD_MODE from the environment Xcode builds
+  // out of the target configuration's base xcconfig. runGuard injects that
+  // variable directly, so every guard test above stays green even if the chain
+  // that delivers it in a real build is broken. These assert the chain itself:
+  //
+  //   Generated.xcconfig
+  //     -> #include'd by Flutter/Debug.xcconfig and Flutter/Release.xcconfig
+  //       -> baseConfigurationReference on each configuration of the Runner target
+  //
+  // Drop the include, or add a configuration with no base reference, and the
+  // phase sees an unset marker: a hard failure for release, a warning for debug.
+  group('xcconfig chain', () {
+    test('each mode xcconfig includes Generated.xcconfig', () {
+      for (final String mode in <String>['debug', 'release']) {
+        expect(NativeTvosBundle.buildModeXcconfig(mode),
+            contains('#include "Generated.xcconfig"'),
+            reason: '$mode xcconfig must pull in the staged-mode marker');
+      }
+    });
+
+    for (final String relativePath in <String>[
+      'templates/app/swift/tvos.tmpl/Runner.xcodeproj/project.pbxproj.tmpl',
+      'packages/flutter_tvos/example/tvos/Runner.xcodeproj/project.pbxproj',
+    ]) {
+      test('$relativePath wires every Runner configuration to an xcconfig', () {
+        final String pbxproj =
+            const LocalFileSystem().file(relativePath).readAsStringSync();
+
+        // The Runner *target*'s configuration list, not the project's: only the
+        // target's configurations carry a base xcconfig.
+        final Match? listMatch = RegExp(
+          r'Build configuration list for PBXNativeTarget "Runner" \*/ = \{'
+          r'.*?buildConfigurations = \((.*?)\);',
+          dotAll: true,
+        ).firstMatch(pbxproj);
+        expect(listMatch, isNotNull,
+            reason: 'expected a configuration list for the Runner target');
+
+        final List<String> configIds = RegExp(r'([0-9A-F]{24})')
+            .allMatches(listMatch!.group(1)!)
+            .map((Match m) => m.group(1)!)
+            .toList();
+        expect(configIds, hasLength(greaterThanOrEqualTo(3)),
+            reason: 'expected Debug, Release and Profile');
+
+        for (final String id in configIds) {
+          final Match? config = RegExp(
+            '$id /\\* (\\w+) \\*/ = \\{(.*?)\\n\t\t\\};',
+            dotAll: true,
+          ).firstMatch(pbxproj);
+          expect(config, isNotNull, reason: 'no XCBuildConfiguration for $id');
+          final String name = config!.group(1)!;
+          final String body = config.group(2)!;
+
+          final Match? base =
+              RegExp(r'baseConfigurationReference = ([0-9A-F]{24})').firstMatch(body);
+          expect(base, isNotNull,
+              reason: 'the $name configuration has no baseConfigurationReference, '
+                  'so Generated.xcconfig never reaches the build-mode guard');
+
+          // ...and it must resolve to one of our xcconfigs, not any file.
+          final Match? fileRef = RegExp(
+            '${base!.group(1)} /\\* [^*]*\\*/ = \\{isa = PBXFileReference;[^\n]*?path = ([^;]+);',
+          ).firstMatch(pbxproj);
+          expect(fileRef, isNotNull,
+              reason: 'the $name base reference resolves to no file');
+          expect(fileRef!.group(1), anyOf('Flutter/Debug.xcconfig', 'Flutter/Release.xcconfig'),
+              reason: 'the $name configuration must inherit from a Flutter xcconfig');
+        }
+      });
+    }
+  });
+
   group('stripJitPayload', () {
     late FileSystem fs;
     setUp(() => fs = MemoryFileSystem.test());
