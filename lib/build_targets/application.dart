@@ -1241,9 +1241,7 @@ class NativeTvosBundle extends Target {
     // Drop it here rather than cleaning the shared output directory, which
     // incremental builds rely on.
     if (!buildInfo.buildInfo.isDebug) {
-      final File staleKernel = flutterAssetsTarget.childFile('kernel_blob.bin');
-      if (staleKernel.existsSync()) {
-        staleKernel.deleteSync();
+      if (stripJitPayload(stagedAssets: flutterAssetsTarget)) {
         globals.logger.printTrace(
           'Removed kernel_blob.bin staged by an earlier debug build',
         );
@@ -1251,6 +1249,22 @@ class NativeTvosBundle extends Target {
     }
 
     globals.logger.printTrace('Copied flutter_assets to ${flutterAssetsTarget.path}');
+  }
+
+  /// Removes the JIT payload from [stagedAssets], returning whether one was
+  /// there. Only a debug build writes `kernel_blob.bin`, so its presence in an
+  /// AOT build means it survived in the shared `build/tvos/` output directory
+  /// and was mirrored forward.
+  ///
+  /// Returns false when there is nothing to remove, which is the normal case.
+  @visibleForTesting
+  static bool stripJitPayload({required Directory stagedAssets}) {
+    final File kernel = stagedAssets.childFile('kernel_blob.bin');
+    if (!kernel.existsSync()) {
+      return false;
+    }
+    kernel.deleteSync();
+    return true;
   }
 
   /// Mirrors the build output's flutter_assets tree into [target].

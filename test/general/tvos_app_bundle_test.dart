@@ -20,6 +20,32 @@ import '../src/common.dart';
 
 void main() {
   // --- Issue #3: flutter_assets duplication -------------------------------
+  group('stripJitPayload', () {
+    late FileSystem fs;
+    setUp(() => fs = MemoryFileSystem.test());
+
+    // build/tvos/ is shared across modes and nothing there removes the kernel
+    // blob, so an AOT build run after any debug build mirrored a 40+ MB debug
+    // kernel into the staged assets and shipped it inside the release app.
+    test('removes a kernel blob left by an earlier debug build', () {
+      final Directory staged = fs.directory('/app/tvos/Flutter/flutter_assets')
+        ..createSync(recursive: true);
+      staged.childFile('kernel_blob.bin').writeAsStringSync('jit');
+      staged.childFile('AssetManifest.bin').writeAsStringSync('assets');
+
+      expect(NativeTvosBundle.stripJitPayload(stagedAssets: staged), isTrue);
+      expect(staged.childFile('kernel_blob.bin').existsSync(), isFalse);
+      expect(staged.childFile('AssetManifest.bin').existsSync(), isTrue,
+          reason: 'only the JIT payload is removed');
+    });
+
+    test('reports nothing removed when no kernel blob is staged', () {
+      final Directory staged = fs.directory('/app/tvos/Flutter/flutter_assets')
+        ..createSync(recursive: true);
+      expect(NativeTvosBundle.stripJitPayload(stagedAssets: staged), isFalse);
+    });
+  });
+
   group('copyFlutterAssetsTree', () {
     late MemoryFileSystem fs;
 
