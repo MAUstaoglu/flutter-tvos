@@ -2,7 +2,23 @@
 
 All notable changes to flutter-tvos will be documented here.
 
-## [Unreleased]
+## [1.7.0] - 2026-08-20
+
+### Changed
+
+- **Upgraded to Flutter 3.47.1**, with the engine artifacts rebuilt against it.
+
+  Nothing tvOS-facing moved. None of the files the tvOS patch set touches
+  changed between 3.47.0 and 3.47.1, `shell/platform/darwin` is untouched, and
+  the five Dart SDK files behind the platform-identity patches are identical at
+  both revisions. Upstream's changes land in `flutter_tools`, the Linux and
+  Windows embedders, and an Impeller compiler path fix.
+
+  The engine was rebuilt regardless, because `dart_revision` moved and AOT
+  snapshots are keyed to the Dart SDK hash: a profile or release build compiled
+  against the previous artifacts fails to load with an SDK-hash mismatch. For
+  the same reason, upgrading the CLI without the matching engine — or the
+  reverse — is not supported; `flutter-tvos precache` pulls the pair.
 
 ### Fixed
 
