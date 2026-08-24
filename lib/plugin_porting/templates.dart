@@ -96,9 +96,9 @@ String renderPubspec({required PluginSource source, required String licenseHolde
 
 /// Renders the output package's CocoaPods podspec.
 ///
-/// Per the project rules in flutter-tvos/CLAUDE.md, the podspec must NOT use
-/// `s.dependency 'Flutter'` (the Flutter pod doesn't declare tvOS support).
-/// Flutter.framework is picked up via FRAMEWORK_SEARCH_PATHS instead.
+/// The podspec must NOT use `s.dependency 'Flutter'`, because the Flutter pod
+/// does not declare tvOS support. Flutter.framework is picked up via
+/// FRAMEWORK_SEARCH_PATHS instead.
 String renderPodspec({required PluginSource source, required String licenseHolder}) {
   // A modular SwiftPM package keeps its public headers under an
   // `include/<module>/` directory and `#import`s them via that prefix.
@@ -287,8 +287,8 @@ String renderBridgingHeader({required PluginSource source, required String licen
 /// Phase 1 emits a `registerWith()` that's a no-op — when the user pastes
 /// their iOS Dart implementation in (or wires it via the platform interface
 /// in phase 3), they replace the body. The class modifier is `base` so it
-/// works as a subclass of a `base class` platform interface (the Dart 3
-/// requirement documented in flutter-tvos/CLAUDE.md).
+/// works as a subclass of a `base class` platform interface, which Dart 3
+/// requires.
 String renderDartEntry({required PluginSource source, required String licenseHolder}) {
   final String header = renderLicenseHeader(
     holder: licenseHolder,
