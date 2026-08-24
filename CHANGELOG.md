@@ -31,11 +31,24 @@ All notable changes to flutter-tvos will be documented here.
   nothing a code-asset hook produces is installed into a tvOS app. The app
   bundle is unchanged.
 
+  **Requires `flutter config --enable-dart-data-assets`.** Dart data assets are
+  off by default. With them off the pass does not run at all and says so,
+  naming the packages whose hooks were skipped and the command that turns them
+  on — running the hooks to collect assets nobody asked for would be cost
+  without benefit, and cost that can fail a build.
+
   An app with no hook-carrying packages is unaffected. A hook that cannot cope
   with an unfamiliar target OS makes the pass retry under the iOS-family name it
   understands, so apps that built before still build; `package:code_assets`
   throws on an unknown OS until 2.0.0, which `objective_c` and so most plugin
   graphs inherit today.
+
+  One case does regress, and it is the price of running hooks that never ran
+  here before: an app whose hook fails for a reason that is not the target OS —
+  a missing Rust toolchain, a compile error — built on 1.7.0 and fails on 1.8.0.
+  The retry cannot help there, because every failure reaches this pass as the
+  same empty result; the hook's own error is printed above the failure, and the
+  build stops rather than shipping assets it could not produce.
 
   This release is CLI-only. The Flutter revision and the engine artifacts are
   the pair 1.7.0 shipped, so `flutter-tvos precache` has nothing new to fetch.

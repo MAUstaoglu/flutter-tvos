@@ -66,10 +66,15 @@ jobs:
         working-directory: packages/flutter_tvos
         run: ../../flutter/bin/flutter test
 
-      # Matches the gate in test.yml, so a tag cannot ship what a pull request
-      # would have been stopped for.
+      # Both halves of the gate in test.yml, so a tag cannot ship what a pull
+      # request would have been stopped for. Analyzing lib/ alone here would
+      # have let a lint inside packages/flutter_tvos block a PR and not a tag.
       - name: Run dart analyze
         run: flutter/bin/dart analyze --fatal-infos lib/ test/ bin/
+
+      - name: Analyze packages/flutter_tvos
+        working-directory: packages/flutter_tvos
+        run: ../../flutter/bin/flutter analyze --fatal-infos
 
       - name: Extract version from tag
         id: version

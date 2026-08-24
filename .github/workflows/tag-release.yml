@@ -47,6 +47,8 @@ jobs:
 
       - name: Decide whether main needs a tag
         id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '[:space:]')
@@ -66,7 +68,7 @@ jobs:
           FLUTTER_COMMIT=$(tr -d '[:space:]' < bin/internal/flutter.version)
           FLUTTER_VERSION=$(git ls-remote --tags https://github.com/flutter/flutter.git \
             | awk -v sha="$FLUTTER_COMMIT" '$1 == sha { sub(/\^\{\}$/, "", $2); sub(/^refs\/tags\//, "", $2); print $2 }' \
-            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
           if [ -z "$FLUTTER_VERSION" ]; then
             echo "::error::no flutter/flutter release tag points at $FLUTTER_COMMIT."
             echo "The pin is either a pre-release or not on a tagged commit, so the"
@@ -78,19 +80,42 @@ jobs:
           TAG="v$FLUTTER_VERSION-tvos.$VERSION"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+          # The CLI version is the release decision, not the tag name. Those
+          # differ: the tag also carries the Flutter pin, so bumping
+          # bin/internal/flutter.version alone produces a name no tag holds yet
+          # and would publish a release for a CLI version nobody bumped and no
+          # CHANGELOG entry describes. Ask whether this *version* has shipped
+          # under any pin, not whether this exact tag exists.
+          SHIPPED=$(git tag -l "*-tvos.$VERSION" | head -1 || true)
+
           # The normal case by a wide margin: most merges to main are not
           # releases, so this exits quietly rather than treating it as notable.
-          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "$TAG already exists — nothing to release."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          #
+          # A tag with no Release behind it is the exception, and it is what the
+          # workflow_dispatch hatch exists for: the tag is pushed before the
+          # release job validates anything, so a failure there leaves one
+          # stranded. Asking about the Release rather than the tag is what lets
+          # a re-run finish the job instead of exiting as "already released".
+          if [ -n "$SHIPPED" ]; then
+            if gh release view "$SHIPPED" >/dev/null 2>&1; then
+              echo "$SHIPPED is already released — nothing to do."
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::warning::$SHIPPED exists with no Release behind it; finishing it."
+            echo "tag=$SHIPPED" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "skip_tag_push=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "should_release=true" >> "$GITHUB_OUTPUT"
-          echo "main is at $VERSION with no $TAG — tagging $(git rev-parse HEAD)."
+          echo "main is at $VERSION with no tag — tagging $(git rev-parse HEAD)."
 
       - name: Push the tag
-        if: steps.decide.outputs.should_release == 'true'
+        if: >-
+          steps.decide.outputs.should_release == 'true' &&
+          steps.decide.outputs.skip_tag_push != 'true'
         run: |
           set -euo pipefail
           # Annotated, so the tag records when and why it was created rather
