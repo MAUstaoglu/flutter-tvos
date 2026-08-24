@@ -95,7 +95,7 @@ void main() {
     test('idempotent: re-porting replaces managed keys, no duplicates', () {
       final Directory base = _basePluginWithExample(fs);
       final Directory out = fs.directory('/out/audbox_tvos')..createSync(recursive: true);
-      final ExamplePorter p = ExamplePorter(fileSystem: fs);
+      final p = ExamplePorter(fileSystem: fs);
       p.port(
         basePluginDir: base,
         outputPackageDir: out,

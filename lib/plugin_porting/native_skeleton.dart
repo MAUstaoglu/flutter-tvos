@@ -33,7 +33,7 @@ class NativeSkeleton {
   }) {
     final String out = source.outputPackageName;
     final String swiftClass = source.pluginClass;
-    final String channel = 'plugins.flutter.io/${source.basePackageName}';
+    final channel = 'plugins.flutter.io/${source.basePackageName}';
 
     return <String, String>{
       'pubspec.yaml':

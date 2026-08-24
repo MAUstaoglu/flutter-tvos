@@ -37,7 +37,7 @@ class ReportEmitter {
     List<String> prunedDartFiles = const <String>[],
     String? today,
   }) {
-    final List<PortingFinding> all = <PortingFinding>[
+    final all = <PortingFinding>[
       for (final PortingResult r in results) ...r.findings,
     ];
 
@@ -56,13 +56,13 @@ class ReportEmitter {
             f.action == FindingAction.taggedWithTodo)
         .toList();
 
-    final Set<String> detectedMethods = <String>{
+    final detectedMethods = <String>{
       for (final PortingResult r in results) ...r.detectedMethods,
     };
-    final Set<String> stubbedMethods = <String>{
+    final stubbedMethods = <String>{
       for (final PortingResult r in results) ...r.stubbedCases,
     };
-    final Set<String> partialMethods = <String>{
+    final partialMethods = <String>{
       for (final PortingFinding f in partialFindings)
         if (f.enclosingMethod != null) f.enclosingMethod!,
     };
@@ -82,12 +82,12 @@ class ReportEmitter {
     // a graceful partial port: the developer can hand-implement these
     // regions later. (A symbol referenced from many places may still
     // need manual cleanup — flagged below, not silently broken.)
-    final Set<String> disabledApis = <String>{
+    final disabledApis = <String>{
       for (final PortingFinding f in disabledFindings) f.pattern.name,
     };
     final bool hasDisabled = disabledApis.isNotEmpty;
 
-    final StringBuffer b = StringBuffer()
+    final b = StringBuffer()
       ..writeln('# ${source.outputPackageName} — porting report')
       ..writeln()
       ..writeln(
@@ -147,7 +147,7 @@ class ReportEmitter {
             '(review `tvos/Classes/` by hand) or it has no method channel.')
         ..writeln();
     } else {
-      for (final String m in portedMethods) {
+      for (final m in portedMethods) {
         b
           ..writeln('### `$m` ✓ ported')
           ..writeln()
@@ -193,7 +193,7 @@ class ReportEmitter {
         ..writeln('None. Every `import` in the source compiles on tvOS.')
         ..writeln();
     } else {
-      for (final PortingFinding f in importStrips) {
+      for (final f in importStrips) {
         b.writeln('- `${f.matchedText}` (`${f.fileRelativePath}:${f.line}`)');
       }
       b.writeln();
@@ -223,7 +223,7 @@ class ReportEmitter {
             'were replaced with `// (pruned …)` placeholders so line '
             'numbers stay stable:')
         ..writeln();
-      for (final String relPath in prunedDartFiles) {
+      for (final relPath in prunedDartFiles) {
         b.writeln('- `lib/$relPath`');
       }
       b.writeln();
@@ -247,7 +247,7 @@ class ReportEmitter {
         ..writeln()
         ..writeln('| API | Where | Matched | Why it cannot run on tvOS |')
         ..writeln('|---|---|---|---|');
-      for (final PortingFinding f in disabledFindings) {
+      for (final f in disabledFindings) {
         b.writeln('| ${f.pattern.name} | `${f.fileRelativePath}:${f.line}` '
             '| `${f.matchedText}` | ${_collapse(f.pattern.note)} |');
       }
@@ -265,12 +265,12 @@ class ReportEmitter {
         ..writeln();
     } else {
       var n = 1;
-      for (final PortingFinding f in partialFindings) {
+      for (final f in partialFindings) {
         b.writeln('${n++}. `${f.fileRelativePath}:${f.line}` — '
             '${f.pattern.name} (${_severityWord(f.pattern.severity)}). '
             '${_collapse(f.pattern.note)}');
       }
-      for (final PortingFinding f in disabledFindings) {
+      for (final f in disabledFindings) {
         b.writeln('${n++}. `${f.fileRelativePath}:${f.line}` — '
             '${f.pattern.name} disabled on tvOS (enclosing declaration '
             'compiled out behind `#if !os(tvOS)`/`#if !TARGET_OS_TV`). '
@@ -328,7 +328,7 @@ class ReportEmitter {
       };
 
   static String _today() {
-    final DateTime now = DateTime.now();
+    final now = DateTime.now();
     final String yyyy = now.year.toString().padLeft(4, '0');
     final String mm = now.month.toString().padLeft(2, '0');
     final String dd = now.day.toString().padLeft(2, '0');

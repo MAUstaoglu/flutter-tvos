@@ -9,17 +9,17 @@ import '../src/common.dart';
 void main() {
   group('expandTvosPlatformArgs', () {
     test('leaves non-create argv untouched', () {
-      final List<String> a = <String>['build', 'tvos', '--platforms=tvos'];
+      final a = <String>['build', 'tvos', '--platforms=tvos'];
       expect(expandTvosPlatformArgs(a), same(a));
     });
 
     test('leaves create without --platforms untouched', () {
-      final List<String> a = <String>['create', '--org', 'com.x', '.'];
+      final a = <String>['create', '--org', 'com.x', '.'];
       expect(expandTvosPlatformArgs(a), same(a));
     });
 
     test('leaves create --platforms=ios (no tvos) untouched', () {
-      final List<String> a = <String>['create', '--platforms=ios', '.'];
+      final a = <String>['create', '--platforms=ios', '.'];
       expect(expandTvosPlatformArgs(a), same(a));
     });
 

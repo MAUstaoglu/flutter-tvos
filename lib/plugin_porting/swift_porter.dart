@@ -44,15 +44,15 @@ class SwiftPorter {
   /// `tvos/Classes/URLLauncherPlugin.swift`.
   PortingResult port(String source, {required String fileRelativePath}) {
     final List<String> originalLines = source.split('\n');
-    final List<String> outputLines = <String>[...originalLines];
-    final List<PortingFinding> findings = <PortingFinding>[];
-    final Set<String> strippedImports = <String>{};
+    final outputLines = <String>[...originalLines];
+    final findings = <PortingFinding>[];
+    final strippedImports = <String>{};
 
     // Pass 1 — detect `case "<method>":` blocks. Build a map line → method
     // name so per-line findings can be tagged with their enclosing method.
     final Map<int, String> caseAt = _detectCaseBlocks(originalLines);
-    final Map<String, int> methodToFirstLine = <String, int>{};
-    final Map<String, int> methodToLastLine = <String, int>{};
+    final methodToFirstLine = <String, int>{};
+    final methodToLastLine = <String, int>{};
     _computeCaseExtents(originalLines, methodToFirstLine, methodToLastLine);
 
     // Pass 1b — make tvOS follow the iOS code paths. The tvOS embedder
@@ -170,11 +170,11 @@ class SwiftPorter {
 
     // Pass 3 — API pattern scan over non-import lines. Apply the
     // appropriate action (stub, disable-region, flag).
-    final Set<String> stubbedMethods = <String>{};
+    final stubbedMethods = <String>{};
     // line index → unsupported API name; the enclosing declaration of
     // each anchor is later wrapped in `#if !os(tvOS)` so the package
     // still compiles, with the feature disabled on tvOS.
-    final Map<int, String> disableAnchors = <int, String>{};
+    final disableAnchors = <int, String>{};
 
     for (var i = 0; i < originalLines.length; i++) {
       final String line = originalLines[i];
@@ -277,9 +277,9 @@ class SwiftPorter {
   /// call.method` pattern that 90%+ of Flutter plugins use; falls back
   /// to "no enclosing method" for unusual structures.
   Map<int, String> _detectCaseBlocks(List<String> lines) {
-    final Map<int, String> result = <int, String>{};
+    final result = <int, String>{};
     String? activeCase;
-    int activeIndent = -1;
+    var activeIndent = -1;
     for (var i = 0; i < lines.length; i++) {
       final String line = lines[i];
       final RegExpMatch? caseMatch =
@@ -319,7 +319,7 @@ class SwiftPorter {
     Map<String, int> lastLine,
   ) {
     String? activeCase;
-    int activeIndent = -1;
+    var activeIndent = -1;
     int? bodyStart;
     for (var i = 0; i < lines.length; i++) {
       final String line = lines[i];
@@ -369,15 +369,15 @@ class SwiftPorter {
     Map<String, int> firstLine,
     Map<String, int> lastLine,
   ) {
-    for (final String method in stubbedMethods) {
+    for (final method in stubbedMethods) {
       final int? first = firstLine[method];
       final int? last = lastLine[method];
       if (first == null || last == null || first > last) {
         continue;
       }
       // Detect the indent from the first non-empty body line.
-      String indent = '    ';
-      for (var i = first; i <= last; i++) {
+      var indent = '    ';
+      for (int i = first; i <= last; i++) {
         if (lines[i].trim().isNotEmpty) {
           indent = lines[i].substring(
             0,
@@ -387,7 +387,7 @@ class SwiftPorter {
         }
       }
       // Comment out original body.
-      for (var i = first; i <= last; i++) {
+      for (int i = first; i <= last; i++) {
         if (lines[i].isNotEmpty) {
           lines[i] = '// ${lines[i]}';
         }
@@ -396,7 +396,7 @@ class SwiftPorter {
       // want to add new lines (which would change line numbers reported
       // by previous findings). Pre-pending preserves layout enough for
       // the user to navigate.
-      final String stub =
+      final stub =
           '${indent}result(FlutterMethodNotImplemented)  // TODO(porter): tvOS-incompatible API stubbed';
       lines[first] = '$stub\n${lines[first]}';
     }
@@ -421,8 +421,8 @@ class SwiftPorter {
     Map<int, String> anchors,
   ) {
     // anchor → [start, end] enclosing-declaration range.
-    final List<List<int>> ranges = <List<int>>[];
-    final Map<int, Set<String>> namesByStart = <int, Set<String>>{};
+    final ranges = <List<int>>[];
+    final namesByStart = <int, Set<String>>{};
     for (final MapEntry<int, String> e in anchors.entries) {
       final List<int> r = _memberRange(orig, e.key);
       ranges.add(r);
@@ -431,8 +431,8 @@ class SwiftPorter {
     ranges.sort((List<int> a, List<int> b) => a[0].compareTo(b[0]));
     // Merge only genuinely overlapping ranges (not merely adjacent) so a
     // healthy member sitting between two disabled ones stays live.
-    final List<List<int>> merged = <List<int>>[];
-    for (final List<int> r in ranges) {
+    final merged = <List<int>>[];
+    for (final r in ranges) {
       if (merged.isNotEmpty && r[0] <= merged.last[1]) {
         if (r[1] > merged.last[1]) {
           merged.last[1] = r[1];
@@ -443,7 +443,7 @@ class SwiftPorter {
         merged.add(<int>[r[0], r[1]]);
       }
     }
-    final List<String> result = <String>[];
+    final result = <String>[];
     var ri = 0;
     for (var i = 0; i < out.length; i++) {
       if (ri < merged.length && i == merged[ri][0]) {
@@ -562,7 +562,7 @@ class SwiftPorter {
       // nested `#if`/`#endif` so an inner conditional can't end it early.
       var depth = 0;
       var hasSignature = false;
-      for (var j = i + 1; j < originalLines.length; j++) {
+      for (int j = i + 1; j < originalLines.length; j++) {
         final String tj = originalLines[j].trimLeft();
         if (tj.startsWith('#if') ||
             tj.startsWith('#ifdef') ||

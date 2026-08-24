@@ -13,21 +13,21 @@ import '../src/fake_process_manager.dart';
 void main() {
   group('SourceSpec.parse', () {
     test('local path only', () {
-      final SourceSpec s = SourceSpec.parse(positional: '../gadget_ios');
+      final s = SourceSpec.parse(positional: '../gadget_ios');
       expect(s.mode, FetchMode.localPath);
       expect(s.identifier, '../gadget_ios');
       expect(s.ref, isNull);
     });
 
     test('--from-pub only', () {
-      final SourceSpec s = SourceSpec.parse(fromPub: 'gadget_ios');
+      final s = SourceSpec.parse(fromPub: 'gadget_ios');
       expect(s.mode, FetchMode.pub);
       expect(s.identifier, 'gadget_ios');
       expect(s.derivedName, 'gadget_ios');
     });
 
     test('--from-git with --ref', () {
-      final SourceSpec s = SourceSpec.parse(
+      final s = SourceSpec.parse(
         fromGit: 'https://github.com/foo/gadget.git',
         ref: 'main',
       );
@@ -45,7 +45,7 @@ void main() {
     });
 
     test('git clone args without ref omit --branch', () {
-      final SourceSpec s =
+      final s =
           SourceSpec.parse(fromGit: 'git@github.com:foo/bar/');
       expect(s.derivedName, 'bar');
       expect(s.gitCloneArgs('/d'),
@@ -90,7 +90,7 @@ void main() {
 
     test('localPath returns the directory, errors when missing', () async {
       final Directory dir = fs.directory('/p')..createSync(recursive: true);
-      final SourceFetcher f = SourceFetcher(
+      final f = SourceFetcher(
         fileSystem: fs,
         processManager: FakeProcessManager.empty(),
         logger: logger,
@@ -111,7 +111,7 @@ void main() {
     test('git clone success returns the checkout dir', () async {
       final Directory work = fs.directory('/w')..createSync(recursive: true);
       final String dest = fs.path.join(work.path, 'gadget');
-      final FakeProcessManager pm = FakeProcessManager.list(<FakeCommand>[
+      final pm = FakeProcessManager.list(<FakeCommand>[
         FakeCommand(
           command: <String>[
             'git', 'clone', '--depth', '1',
@@ -139,7 +139,7 @@ void main() {
     test('git clone failure raises SourceFetchError with stderr', () async {
       final Directory work = fs.directory('/w')..createSync(recursive: true);
       final String dest = fs.path.join(work.path, 'bar');
-      final FakeProcessManager pm = FakeProcessManager.list(<FakeCommand>[
+      final pm = FakeProcessManager.list(<FakeCommand>[
         FakeCommand(
           command: <String>['git', 'clone', '--depth', '1', 'https://x/bar.git', dest],
           exitCode: 128,
@@ -165,7 +165,7 @@ void main() {
       final String rootUri =
           fs.path.relative(pkg.path, from: fs.path.join(probe, '.dart_tool'));
 
-      final FakeProcessManager pm = FakeProcessManager.list(<FakeCommand>[
+      final pm = FakeProcessManager.list(<FakeCommand>[
         FakeCommand(
           command: const <String>['dart', 'pub', 'get'],
           onRun: (_) {
@@ -193,7 +193,7 @@ void main() {
     test('pub raises when the package is absent from package_config', () async {
       final Directory work = fs.directory('/w')..createSync(recursive: true);
       final String probe = fs.path.join(work.path, '_pub_probe');
-      final FakeProcessManager pm = FakeProcessManager.list(<FakeCommand>[
+      final pm = FakeProcessManager.list(<FakeCommand>[
         FakeCommand(
           command: const <String>['dart', 'pub', 'get'],
           onRun: (_) {

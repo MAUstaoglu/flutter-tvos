@@ -216,9 +216,9 @@ class SourceAnalyzer {
     }
 
     final platformConfig = platforms[chosenPlatform] as YamlMap?;
-    final bool sharedDarwin = platformConfig?['sharedDarwinSource'] == true;
+    final sharedDarwin = platformConfig?['sharedDarwinSource'] == true;
     final dartPluginClass = platformConfig?['dartPluginClass'] as String?;
-    String? pluginClass = platformConfig?['pluginClass'] as String?;
+    var pluginClass = platformConfig?['pluginClass'] as String?;
     if (pluginClass != null && (pluginClass.isEmpty || pluginClass == 'none')) {
       pluginClass = null;
     }
@@ -450,17 +450,17 @@ class SourceAnalyzer {
     String pkg, {
     required bool sharedDarwin,
   }) {
-    final List<String> roots =
+    final roots =
         sharedDarwin ? <String>['darwin', platform] : <String>[platform, 'darwin'];
-    final List<Directory> candidates = <Directory>[];
-    for (final String r in roots) {
+    final candidates = <Directory>[];
+    for (final r in roots) {
       final Directory root = source.childDirectory(r);
       candidates.add(root.childDirectory('Classes'));
       candidates.add(
         root.childDirectory(pkg).childDirectory('Sources').childDirectory(pkg),
       );
       candidates.add(root.childDirectory('Sources').childDirectory(pkg));
-      for (final Directory srcRoot in <Directory>[
+      for (final srcRoot in <Directory>[
         root.childDirectory(pkg).childDirectory('Sources'),
         root.childDirectory('Sources'),
       ]) {
@@ -474,7 +474,7 @@ class SourceAnalyzer {
       }
       candidates.add(root); // legacy flat layout — last resort.
     }
-    for (final Directory c in candidates) {
+    for (final c in candidates) {
       if (c.existsSync() && _hasNativeFiles(c)) {
         return c;
       }
@@ -507,9 +507,9 @@ class SourceAnalyzer {
   /// Matches Swift `class X: … FlutterPlugin` and ObjC
   /// `@interface X : … <FlutterPlugin>`.
   String? _derivePluginClass(Directory dir) {
-    final RegExp swift =
+    final swift =
         RegExp(r'class\s+([A-Za-z_]\w*)\s*:\s*[^{]*\bFlutterPlugin\b');
-    final RegExp objc =
+    final objc =
         RegExp(r'@interface\s+([A-Za-z_]\w*)\s*:[^<]*<[^>]*\bFlutterPlugin\b');
     for (final FileSystemEntity e in dir.listSync(recursive: true)) {
       if (e is! File) {

@@ -62,7 +62,7 @@ Future<void> renderTvosRunner({
   final String tvosIdentifier =
       CreateBase.createUTIIdentifier(organization, name);
   logger.printStatus('Generating tvOS runner...');
-  final Template template = Template(
+  final template = Template(
     templateDir,
     templateDir,
     fileSystem: fileSystem,

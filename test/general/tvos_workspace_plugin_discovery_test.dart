@@ -103,7 +103,7 @@ flutter:
   }
 
   testUsingContext(
-    'discovers a workspace-member app\'s tvOS plugins via the hoisted '
+    "discovers a workspace-member app's tvOS plugins via the hoisted "
     'package_config.json (issue #29)',
     () {
       final List<TvosSpmPlugin> spm = discoverTvosSpmPlugins(seedWorkspace());

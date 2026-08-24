@@ -33,14 +33,14 @@ void main() {
   // phase sees an unset marker: a hard failure for release, a warning for debug.
   group('xcconfig chain', () {
     test('each mode xcconfig includes Generated.xcconfig', () {
-      for (final String mode in <String>['debug', 'release']) {
+      for (final mode in <String>['debug', 'release']) {
         expect(NativeTvosBundle.buildModeXcconfig(mode),
             contains('#include "Generated.xcconfig"'),
             reason: '$mode xcconfig must pull in the staged-mode marker');
       }
     });
 
-    for (final String relativePath in <String>[
+    for (final relativePath in <String>[
       'templates/app/swift/tvos.tmpl/Runner.xcodeproj/project.pbxproj.tmpl',
       'packages/flutter_tvos/example/tvos/Runner.xcodeproj/project.pbxproj',
     ]) {
@@ -65,7 +65,7 @@ void main() {
         expect(configIds, hasLength(greaterThanOrEqualTo(3)),
             reason: 'expected Debug, Release and Profile');
 
-        for (final String id in configIds) {
+        for (final id in configIds) {
           final Match? config = RegExp(
             '$id /\\* (\\w+) \\*/ = \\{(.*?)\\n\t\t\\};',
             dotAll: true,
@@ -252,7 +252,7 @@ void main() {
   // LC_BUILD_VERSION minos is stamped with the SDK version (ITMS-90208). The
   // flag's value is covered above; here we assert it actually reaches the argv.
   group('AOT clang argv carry the min-version flag', () {
-    const String flag = '-mtvos-version-min=15.0';
+    const flag = '-mtvos-version-min=15.0';
 
     test('aotAssembleArgs (cc) includes the flag and inputs', () {
       final List<String> args = NativeTvosBundle.aotAssembleArgs(
@@ -416,7 +416,7 @@ void main() {
 
     test('every icon layer ships 1x + 2x images declared in Contents.json', () {
       for (final stack in <String>['Small', 'Large']) {
-        final prefix = stack.toLowerCase();
+        final String prefix = stack.toLowerCase();
         for (final layer in <String>['Back', 'Middle', 'Front']) {
           final dir =
               '$brand/App Icon - $stack.imagestack/$layer.imagestacklayer/Content.imageset';
@@ -425,7 +425,7 @@ void main() {
               reason: 'missing $base.png');
           expect(fs.file('$dir/$base@2x.png$suffix').existsSync(), isTrue,
               reason: 'missing $base@2x.png (App Store rejects 1x-only layers)');
-          final json = fs.file('$dir/Contents.json$suffix').readAsStringSync();
+          final String json = fs.file('$dir/Contents.json$suffix').readAsStringSync();
           expect(json, contains('"$base.png"'));
           expect(json, contains('"$base@2x.png"'));
         }
@@ -447,7 +447,7 @@ void main() {
     });
 
     test('brand-assets index declares the wide top shelf role', () {
-      final json = fs.file('$brand/Contents.json$suffix').readAsStringSync();
+      final String json = fs.file('$brand/Contents.json$suffix').readAsStringSync();
       expect(json, contains('"top-shelf-image-wide"'));
       expect(json, contains('"Top Shelf Image Wide.imageset"'));
       expect(json, contains('"2320x720"'));
@@ -469,15 +469,15 @@ void main() {
       fs = MemoryFileSystem.test();
     });
 
-    const String brandRoot =
+    const brandRoot =
         '/tvos/Runner/Assets.xcassets/AppIcon.brandassets';
 
     File indexFile() => fs.file('$brandRoot/Contents.json');
 
     // Creates the six @2x icon-layer PNGs the completed template ships.
     void createAll2xLayers() {
-      for (final String stack in <String>['Small', 'Large']) {
-        for (final String layer in <String>['Back', 'Middle', 'Front']) {
+      for (final stack in <String>['Small', 'Large']) {
+        for (final layer in <String>['Back', 'Middle', 'Front']) {
           fs
               .file('$brandRoot/App Icon - $stack.imagestack/'
                   '$layer.imagestacklayer/Content.imageset/'
@@ -488,9 +488,9 @@ void main() {
     }
 
     // An old (pre-fix) index lists only the standard top shelf, no wide role.
-    const String oldIndex =
+    const oldIndex =
         '{"assets":[{"filename":"App Icon - Large.imagestack","idiom":"tv","role":"primary-app-icon","size":"1280x768"},{"filename":"Top Shelf Image.imageset","idiom":"tv","role":"top-shelf-image","size":"1920x720"}],"info":{"version":1}}';
-    const String completedIndex =
+    const completedIndex =
         '{"assets":[{"filename":"Top Shelf Image Wide.imageset","idiom":"tv","role":"top-shelf-image-wide","size":"2320x720"}],"info":{"version":1}}';
 
     test('flags the wide role and every @2x layer for an old catalog', () {
@@ -545,7 +545,7 @@ void main() {
   group('pbxprojUsesStaleBundlePath', () {
     // Old phase: bundle resolved as ${PRODUCT_NAME}.app/... (trailing slash).
     String pbxproj({required String productName, required bool stalePath}) {
-      final String bundlePath = stalePath
+      final bundlePath = stalePath
           ? r'${PRODUCT_NAME}.app/Frameworks'
           : r'${WRAPPER_NAME}/Frameworks';
       return '''
@@ -563,7 +563,7 @@ void main() {
       );
     });
 
-    test('false for a stale path under the default \$(TARGET_NAME)', () {
+    test(r'false for a stale path under the default $(TARGET_NAME)', () {
       expect(
         NativeTvosBundle.pbxprojUsesStaleBundlePath(
             pbxproj(productName: r'$(TARGET_NAME)', stalePath: true)),
@@ -589,7 +589,7 @@ void main() {
 
     test('false when the token appears only in a comment (no trailing slash)',
         () {
-      const String currentWithComment =
+      const currentWithComment =
           '# Use CODESIGNING_FOLDER_PATH, not \${PRODUCT_NAME}.app, which is wrong\n'
           '  PRODUCT_NAME = "MyTvApp";\n';
       expect(NativeTvosBundle.pbxprojUsesStaleBundlePath(currentWithComment),
@@ -657,12 +657,12 @@ void main() {
     // xcconfig. This catches settings that drift into the (ineffective) .sh
     // without a matching xcconfig entry.
     test('every export in the .sh has a matching Generated.xcconfig entry', () {
-      const String flutterRoot = '/opt/flutter-tvos/flutter';
-      const String applicationPath = '/app';
-      const String targetFile = 'lib/main.dart';
-      const String buildDir = '/app/build';
-      const String buildName = '2.3.4';
-      const String buildNumber = '17';
+      const flutterRoot = '/opt/flutter-tvos/flutter';
+      const applicationPath = '/app';
+      const targetFile = 'lib/main.dart';
+      const buildDir = '/app/build';
+      const buildName = '2.3.4';
+      const buildNumber = '17';
       final String sh = NativeTvosBundle.buildFlutterExportEnvironment(
         flutterRoot: flutterRoot,
         applicationPath: applicationPath,
@@ -681,9 +681,9 @@ void main() {
         buildMode: 'release',
         stagedSdk: 'appletvos',
       );
-      final RegExp exportLine = RegExp(r'^export "([^"]+)"$', multiLine: true);
+      final exportLine = RegExp(r'^export "([^"]+)"$', multiLine: true);
       for (final Match m in exportLine.allMatches(sh)) {
-        expect(xcconfig, contains(m.group(1)!),
+        expect(xcconfig, contains(m.group(1)),
             reason: 'setting from the .sh is missing from Generated.xcconfig');
       }
     });
@@ -786,7 +786,7 @@ void main() {
         final String guard = pbxproj.substring(guardStart, guardEnd);
         expect(guard, contains(r'STAGED=\"${FLUTTER_STAGED_BUILD_MODE}\"'),
             reason: 'the marker must not be FLUTTER_BUILD_MODE, which is '
-                'upstream\'s user-facing override and can be set at target '
+                "upstream's user-facing override and can be set at target "
                 'level, shadowing Generated.xcconfig');
         // The payload check is what survives a stale marker, so assert it is
         // present rather than trusting the marker comparison alone.
@@ -968,7 +968,7 @@ void main() {
         test('fails an unrecorded Release build even with App.framework staged',
             () {
           final ProcessResult result = runGuard(script,
-              configuration: 'Release', aotPayloadStaged: true);
+              configuration: 'Release');
           expect(result.exitCode, 1);
         });
 

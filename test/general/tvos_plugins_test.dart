@@ -11,7 +11,6 @@ import 'package:flutter_tools/src/cache.dart';
 import 'package:flutter_tools/src/dart/language_version.dart';
 import 'package:flutter_tools/src/globals.dart' as globals;
 import 'package:flutter_tools/src/project.dart';
-import 'package:package_config/package_config.dart' show LanguageVersion;
 import 'package:flutter_tvos/tvos_plugins.dart'
     show
         TvosPlugin,
@@ -19,6 +18,7 @@ import 'package:flutter_tvos/tvos_plugins.dart'
         ensureReadyForTvosTooling,
         recommendTvosPluginsToInstall;
 import 'package:flutter_tvos/tvos_swift_package_manager.dart' show TvosSpmPlugin;
+import 'package:package_config/package_config.dart' show LanguageVersion;
 
 import '../src/common.dart';
 import '../src/context.dart';
@@ -473,7 +473,7 @@ void main() {
     testWithoutContext(
       'suggests `<name>_tvos` for a known plugin the user has not added',
       () {
-        final messages = recommendTvosPluginsToInstall(
+        final List<String> messages = recommendTvosPluginsToInstall(
           allPluginNames: const <String>['audioplayers'],
         );
         expect(messages, hasLength(1));
@@ -487,7 +487,7 @@ void main() {
       'so an app on `audioplayers` (which transitively pulls in '
       '`audioplayers_darwin`) gets exactly one suggestion',
       () {
-        final messages = recommendTvosPluginsToInstall(
+        final List<String> messages = recommendTvosPluginsToInstall(
           allPluginNames: const <String>['audioplayers', 'audioplayers_darwin'],
         );
         expect(messages, hasLength(1),
@@ -499,7 +499,7 @@ void main() {
     testWithoutContext(
       'stays silent when the user has already added `<name>_tvos`',
       () {
-        final messages = recommendTvosPluginsToInstall(
+        final List<String> messages = recommendTvosPluginsToInstall(
           allPluginNames: const <String>[
             'audioplayers',
             'audioplayers_darwin',
@@ -514,7 +514,7 @@ void main() {
       'ignores plugins outside the curated list silently — we do not '
       'speak about random plugins on every build',
       () {
-        final messages = recommendTvosPluginsToInstall(
+        final List<String> messages = recommendTvosPluginsToInstall(
           allPluginNames: const <String>['some_obscure_plugin', 'url_launcher'],
         );
         // url_launcher is not currently in `_kKnownTvosPlugins` either.
@@ -525,7 +525,7 @@ void main() {
     testWithoutContext(
       'fires once per known plugin in the dep graph',
       () {
-        final messages = recommendTvosPluginsToInstall(
+        final List<String> messages = recommendTvosPluginsToInstall(
           allPluginNames: const <String>[
             'video_player',
             'video_player_avfoundation',

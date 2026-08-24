@@ -903,7 +903,7 @@ class NativeTvosBundle extends Target {
       return;
     }
     globals.logger.printWarning(
-      'Warning: this project\'s tvOS app-icon catalog '
+      "Warning: this project's tvOS app-icon catalog "
       '(Runner/Assets.xcassets/AppIcon.brandassets) is incomplete and App '
       'Store validation will reject the archive. Missing:\n'
       '${missing.map((String m) => '  - $m').join('\n')}\n'
@@ -935,7 +935,7 @@ class NativeTvosBundle extends Target {
     if (!index.existsSync()) {
       return const <String>[]; // No stock catalog to validate.
     }
-    final List<String> missing = <String>[];
+    final missing = <String>[];
     String indexContents;
     try {
       indexContents = index.readAsStringSync();
@@ -946,8 +946,8 @@ class NativeTvosBundle extends Target {
       missing.add('the "top-shelf-image-wide" role in '
           'AppIcon.brandassets/Contents.json');
     }
-    for (final String stack in const <String>['Small', 'Large']) {
-      for (final String layer in const <String>['Back', 'Middle', 'Front']) {
+    for (final stack in const <String>['Small', 'Large']) {
+      for (final layer in const <String>['Back', 'Middle', 'Front']) {
         final File layerImage = brand
             .childDirectory('App Icon - $stack.imagestack')
             .childDirectory('$layer.imagestacklayer')
@@ -1031,9 +1031,9 @@ class NativeTvosBundle extends Target {
       return;
     }
     globals.logger.printWarning(
-      'Warning: this project\'s Xcode project (Runner.xcodeproj) predates 1.4.0 '
+      "Warning: this project's Xcode project (Runner.xcodeproj) predates 1.4.0 "
       'and its Flutter build phases resolve the app bundle via '
-      '"\${PRODUCT_NAME}.app" while the target overrides PRODUCT_NAME. That path '
+      r'"${PRODUCT_NAME}.app" while the target overrides PRODUCT_NAME. That path '
       'can differ from the bundle Xcode actually builds, so the engine/asset '
       'copy and the engine re-sign may silently target a path that does not '
       'exist.\n'
@@ -1053,10 +1053,10 @@ class NativeTvosBundle extends Target {
   /// stale path equal the real bundle, so it is not flagged.
   @visibleForTesting
   static bool pbxprojUsesStaleBundlePath(String pbxprojContents) {
-    if (!pbxprojContents.contains('\${PRODUCT_NAME}.app/')) {
+    if (!pbxprojContents.contains(r'${PRODUCT_NAME}.app/')) {
       return false; // Already on WRAPPER_NAME / CODESIGNING_FOLDER_PATH.
     }
-    final RegExp assignment = RegExp(r'PRODUCT_NAME = ([^;]+);');
+    final assignment = RegExp(r'PRODUCT_NAME = ([^;]+);');
     for (final Match m in assignment.allMatches(pbxprojContents)) {
       final String value = m.group(1)!.trim().replaceAll('"', '');
       if (value != r'$(TARGET_NAME)' && value != 'Runner') {
@@ -1096,7 +1096,7 @@ class NativeTvosBundle extends Target {
       return;
     }
     globals.logger.printWarning(
-      'Warning: this project\'s Xcode project (Runner.xcodeproj) has no '
+      "Warning: this project's Xcode project (Runner.xcodeproj) has no "
       '"Check Flutter build mode" build phase. Building or archiving directly '
       'from Xcode copies whatever "flutter-tvos build/run" staged last, '
       'regardless of the configuration Xcode is building — so archiving '
@@ -1802,11 +1802,11 @@ class NativeTvosBundle extends Target {
   /// Flutter build environment (e.g. cargokit locating the Dart SDK); it was
   /// missing from tvOS builds before 1.3.4.
   ///
-  /// `COCOAPODS_PARALLEL_CODE_SIGN` is consumed by CocoaPods' `[CP] Embed Pods
-  /// Frameworks` phase as an *Xcode build setting*, so it must live in the
-  /// xcconfig — not the `.sh`, which that phase never sources. Upstream feeds a
-  /// single settings list to both writers, keeping the `.sh` a strict subset of
-  /// the xcconfig; we mirror that invariant here.
+  /// `COCOAPODS_PARALLEL_CODE_SIGN` is consumed by CocoaPods'
+  /// `[CP] Embed Pods Frameworks` phase as an *Xcode build setting*, so it must
+  /// live in the xcconfig — not the `.sh`, which that phase never sources.
+  /// Upstream feeds a single settings list to both writers, keeping the `.sh` a
+  /// strict subset of the xcconfig; we mirror that invariant here.
   @visibleForTesting
   static String buildGeneratedXcconfig({
     required String flutterRoot,

@@ -1184,7 +1184,7 @@ class TvosDevice extends Device {
   }) async {
     final int devicePort = deviceUri.port;
     final String authPath = deviceUri.path;
-    final Stopwatch elapsed = Stopwatch()..start();
+    final elapsed = Stopwatch()..start();
     var attempt = 0;
     Duration lastDevicectlProbe = Duration.zero;
     var probedDevicectl = false;

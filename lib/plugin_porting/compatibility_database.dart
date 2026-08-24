@@ -269,8 +269,8 @@ const List<ApiPattern> compatibilityDatabase = <ApiPattern>[
         r'|AVAudioSessionCategoryOptionAllowBluetooth(?:A2DP)?',
     severity: Severity.unsupported,
     note:
-        'AVAudioSession exists on tvOS but with a much narrower category-'
-        'options surface. `.defaultToSpeaker` is unavailable on tvOS '
+        'AVAudioSession exists on tvOS but with a much narrower '
+        'category-options surface. `.defaultToSpeaker` is unavailable on tvOS '
         '(there is no earpiece/speaker routing on an Apple TV) and '
         '`.allowBluetooth` / `.allowBluetoothA2DP` only exist from tvOS '
         '17.0. Plugins that set these unconditionally fail to compile for '

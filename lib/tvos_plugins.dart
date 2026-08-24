@@ -125,7 +125,7 @@ List<_DependencyPluginYaml> _walkPluginDependencies(FlutterProject project) {
   }
   Map<String, dynamic> depsJson;
   try {
-    final decoded = json.decode(depsFile.readAsStringSync());
+    final Object? decoded = json.decode(depsFile.readAsStringSync());
     if (decoded is! Map<String, dynamic>) {
       // Root JSON is valid but not an object (e.g. `[]`, `null`, a
       // bare number). A blind `as Map` cast would throw `TypeError`
@@ -139,7 +139,7 @@ List<_DependencyPluginYaml> _walkPluginDependencies(FlutterProject project) {
   } on FileSystemException {
     return out; // File disappeared between existsSync() and read.
   }
-  final rawGraph = depsJson['dependencyGraph'];
+  final Object? rawGraph = depsJson['dependencyGraph'];
   final List<dynamic> depGraph =
       rawGraph is List<dynamic> ? rawGraph : <dynamic>[];
 
@@ -222,12 +222,12 @@ List<_DependencyPluginYaml> _walkPluginDependencies(FlutterProject project) {
 /// block, parsing them into [TvosPlugin] instances.
 List<TvosPlugin> _discoverTvosPlugins(FlutterProject project) {
   final tvosPlugins = <TvosPlugin>[];
-  for (final dep in _walkPluginDependencies(project)) {
-    final platforms = dep.pluginYaml['platforms'];
+  for (final _DependencyPluginYaml dep in _walkPluginDependencies(project)) {
+    final Object? platforms = dep.pluginYaml['platforms'];
     if (platforms is! YamlMap) {
       continue;
     }
-    final tvosConfig = platforms['tvos'];
+    final Object? tvosConfig = platforms['tvos'];
     if (tvosConfig is! YamlMap) {
       continue;
     }
@@ -414,7 +414,7 @@ List<String> recommendTvosPluginsToInstall({
   // membership check. If the user added `<name>_tvos`, that package
   // also lands here, so the canonical-or-alternative check below
   // suppresses re-suggesting what's already installed.
-  final depGraph = allPluginNames.toSet();
+  final Set<String> depGraph = allPluginNames.toSet();
   final messages = <String>[];
   for (final name in allPluginNames) {
     final List<String>? alternatives = _kKnownTvosPlugins[name];
@@ -422,7 +422,7 @@ List<String> recommendTvosPluginsToInstall({
       continue;
     }
     final canonical = '${name}_tvos';
-    final satisfied = depGraph.contains(canonical)
+    final bool satisfied = depGraph.contains(canonical)
         || alternatives.any(depGraph.contains);
     if (satisfied) {
       continue;
@@ -433,8 +433,8 @@ List<String> recommendTvosPluginsToInstall({
         'verified publisher. Did you forget to add it to pubspec.yaml?',
       );
     } else {
-      final List<String> options = <String>[canonical, ...alternatives];
-      final last = options.removeLast();
+      final options = <String>[canonical, ...alternatives];
+      final String last = options.removeLast();
       messages.add(
         '[${options.join(', ')} or $last] is available on pub.dev. '
         'Did you forget to add one to pubspec.yaml?',
@@ -471,7 +471,7 @@ List<String> _collectFfiForcedReferenceSymbols(List<TvosPlugin> plugins) {
       // CocoaPods-only FFI plugin: dynamic-framework exports already survive.
       continue;
     }
-    for (final symbol in plugin.ffiSymbols) {
+    for (final String symbol in plugin.ffiSymbols) {
       if (seen.add(symbol)) {
         ordered.add(symbol);
       }
@@ -557,12 +557,10 @@ Future<void> ensureReadyForTvosTooling(FlutterProject project) async {
   // outside the curated list are silently ignored — we don't hard-fail
   // on them, and we don't auto-recommend the porter for every random
   // plugin (that would be presumptuous and noisy).
-  final recommendations = recommendTvosPluginsToInstall(
+  final List<String> recommendations = recommendTvosPluginsToInstall(
     allPluginNames: _findAllPluginNames(project),
   );
-  for (final message in recommendations) {
-    globals.logger.printWarning(message);
-  }
+  recommendations.forEach(globals.logger.printWarning);
   final methodChannelPlugins = <Map<String, Object?>>[];
   final ffiPlugins = <Map<String, Object?>>[];
 
@@ -586,7 +584,7 @@ Future<void> ensureReadyForTvosTooling(FlutterProject project) async {
   final File depsFile = project.flutterPluginsDependenciesFile;
   if (depsFile.existsSync()) {
     try {
-      final decoded = json.decode(depsFile.readAsStringSync());
+      final Object? decoded = json.decode(depsFile.readAsStringSync());
       if (decoded is Map<String, dynamic>) {
         dependenciesJson = decoded;
       } else {
@@ -614,8 +612,8 @@ Future<void> ensureReadyForTvosTooling(FlutterProject project) async {
   // type check rather than `as Map<String, dynamic>?` so a wrong-shaped
   // value (e.g. `"plugins": []`) falls back to an empty map instead of
   // throwing `TypeError` outside the try/catch above.
-  final rawPlugins = dependenciesJson['plugins'];
-  final pluginsMap = rawPlugins is Map<String, dynamic>
+  final Object? rawPlugins = dependenciesJson['plugins'];
+  final Map<String, dynamic> pluginsMap = rawPlugins is Map<String, dynamic>
       ? rawPlugins
       : <String, dynamic>{};
   pluginsMap['tvos'] = tvosPluginEntries;

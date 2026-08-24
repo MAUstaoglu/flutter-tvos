@@ -460,11 +460,11 @@ flutter:
         final Directory lib = sourceDir.childDirectory('lib')..createSync();
         lib.childFile('gadget_ios.dart').writeAsStringSync(
           "import 'package:gadget_platform_interface/gadget_platform_interface.dart';\n"
-          "\n"
+          '\n'
           "export 'src/gadget_linux.dart'\n"
           "    if (dart.library.js_interop) 'src/gadget_web.dart';\n"
-          "\n"
-          "class Gadget {}\n",
+          '\n'
+          'class Gadget {}\n',
         );
         lib.childDirectory('src').childFile('gadget_linux.dart')
           ..parent.createSync(recursive: true)

@@ -108,7 +108,7 @@ flutter:
                 expect(args, isNot(contains('--sksl')));
                 // Materialize the compiler outputs so the bundle can include
                 // the shader (FakeProcessManager won't create them).
-                for (final String arg in args) {
+                for (final arg in args) {
                   if (arg.startsWith('--sl=')) {
                     fileSystem.file(arg.substring('--sl='.length)).createSync(recursive: true);
                   } else if (arg.startsWith('--spirv=')) {
