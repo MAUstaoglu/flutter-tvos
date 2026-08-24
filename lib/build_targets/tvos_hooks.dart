@@ -26,7 +26,6 @@ import 'package:flutter_tools/src/isolated/native_assets/macos/native_assets_hos
     show cCompilerConfigMacOS;
 import 'package:flutter_tools/src/isolated/native_assets/native_assets.dart'
     show FlutterCodeAsset, FlutterNativeAssetsBuildRunner;
-import 'package:flutter_tools/src/macos/xcode.dart' show environmentTypeFromSdkroot;
 import 'package:hooks/hooks.dart'
     show BuildInputBuilder, EncodedAsset, LinkInputBuilder, ProtocolExtension;
 import 'package:hooks_runner/hooks_runner.dart' show BuildResult;
@@ -177,18 +176,24 @@ Future<IOSCodeConfig> _iosFamilyConfig(Environment environment) async {
   final String sdkRoot =
       environment.defines[kSdkRoot] ??
       await globals.xcode!.sdkLocation(EnvironmentType.physical);
-  final EnvironmentType? environmentType = environmentTypeFromSdkroot(
-    sdkRoot,
-    environment.fileSystem,
-  );
   return IOSCodeConfig(
     targetVersion: targetIOSVersion,
-    // `environmentTypeFromSdkroot` returns null for a path whose basename does
-    // not name an iPhone SDK — pointing kSdkRoot at the tvOS SDK, say, which is
-    // the natural thing for someone to try. Falling back rather than asserting
-    // keeps that from crashing inside a retry.
-    targetSdk: getIOSSdk(environmentType ?? EnvironmentType.physical),
+    targetSdk: getIOSSdk(_environmentTypeOf(sdkRoot, environment.fileSystem)),
   );
+}
+
+/// Device or simulator, read from an SDK path.
+///
+/// Upstream's `environmentTypeFromSdkroot` cannot be used here: it `assert`s
+/// rather than returning null when the basename does not name an *iPhone* SDK,
+/// so an `AppleTVOS.sdk` — the natural thing for someone to point [kSdkRoot] at
+/// — crashes the tool on an assertion inside a retry, which reads as the retry
+/// being broken rather than as an SDK it did not expect. Asking only about the
+/// suffix answers the same question for every Apple SDK, this platform's
+/// included.
+EnvironmentType _environmentTypeOf(String sdkRoot, FileSystem fileSystem) {
+  final String name = fileSystem.path.basename(sdkRoot).toLowerCase();
+  return name.contains('simulator') ? EnvironmentType.simulator : EnvironmentType.physical;
 }
 
 /// Runs every package's Dart build hook for a tvOS app, and returns the
