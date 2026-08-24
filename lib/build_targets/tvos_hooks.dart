@@ -53,12 +53,33 @@ import 'package:meta/meta.dart' show visibleForTesting;
 /// different SDK, a different set of things a package can do. A hook told
 /// `ios` cannot tell the difference and has no way to ask; a hook told
 /// `tvos` can.
+///
+/// What a hook still cannot be told is device versus simulator. The typed side
+/// of the protocol carries that in a per-OS sub-config — `IOSCodeConfig` has
+/// `targetSdk`, and there is an `AndroidCodeConfig` and a `MacOSCodeConfig` —
+/// and there is no tvOS one to carry it in. Naming the simulator as a separate
+/// OS would invent vocabulary no hook reads, and the architecture is arm64
+/// either way, so the two are indistinguishable here.
+///
+/// A hook that ships *source* is unaffected; one that precompiles per-platform
+/// binaries is not. A Metal library built against `appletvos` and one built
+/// against `appletvsimulator` carry different target triples, and Metal
+/// validates that when a pipeline is created rather than degrading, so whichever
+/// such a hook produced first would serve both. The iOS-family fallback keeps
+/// the distinction — `targetSdk` comes from the SDK root — which leaves the
+/// degraded path better off in this one respect than the accurate one.
 const String tvOSName = 'tvos';
 
 /// The architecture tvOS builds target.
 ///
 /// Apple TV is arm64, and so is the simulator on every Mac this toolchain
 /// supports, so there is one value here rather than a list.
+///
+/// Which also means the architecture cannot separate the two, and neither can
+/// anything else on this path: a device build and a simulator build produce
+/// byte-identical hook inputs, and therefore one `hooks_runner` cache entry
+/// serving both. See [tvOSName] for why there is nowhere to put the
+/// distinction.
 const Architecture tvOSArchitecture = Architecture.arm64;
 
 /// The `buildAssetTypes` name for code assets, which is not exported.

@@ -43,6 +43,16 @@ All notable changes to flutter-tvos will be documented here.
   throws on an unknown OS until 2.0.0, which `objective_c` and so most plugin
   graphs inherit today.
 
+  **Known boundary: a hook cannot tell device from simulator.** The protocol
+  carries that in a per-OS sub-config — `IOSCodeConfig.targetSdk`, and there is
+  an Android and a macOS one — and there is no tvOS sub-config to carry it in.
+  Both builds are arm64, so a device build and a simulator build hand a hook
+  byte-identical input and share one hook cache entry. A hook that ships source
+  is unaffected; one that precompiles per-platform binaries is not, and a Metal
+  library built for `appletvos` will not create pipelines on the simulator or
+  the reverse. The iOS-family fallback does keep the distinction, so on this one
+  point the fallback is better off than the accurate path.
+
   One case does regress, and it is the price of running hooks that never ran
   here before: an app whose hook fails for a reason that is not the target OS —
   a missing Rust toolchain, a compile error — built on 1.7.0 and fails on 1.8.0.
