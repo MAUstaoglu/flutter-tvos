@@ -4,6 +4,17 @@ on:
   push:
     tags:
       - 'v*.*.*'   # triggers on tags like v1.0.0, v1.1.0
+  # Called by Tag release once the version on main gains a tag. That workflow
+  # pushes the tag with GITHUB_TOKEN, which deliberately does NOT trigger the
+  # `push: tags` path above — GitHub suppresses workflow triggers from its own
+  # token — so this entry point is how the release actually gets built, and the
+  # suppression stops the two paths from racing to create the same release.
+  workflow_call:
+    inputs:
+      tag:
+        description: The vX.Y.Z tag to build the release for.
+        required: true
+        type: string
 
 jobs:
   release:
@@ -13,6 +24,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Under workflow_call the caller's ref is checked out by default,
+          # which is main — close enough today, but it would silently build
+          # whatever main became if it moved between the tag and this job.
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Fetch Flutter SDK
         run: |
@@ -57,7 +73,9 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+        # GITHUB_REF_NAME is the tag when triggered by a tag push, but the
+        # caller's branch under workflow_call, so the input wins when present.
+        run: echo "version=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         env:
