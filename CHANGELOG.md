@@ -2,7 +2,7 @@
 
 All notable changes to flutter-tvos will be documented here.
 
-## [Unreleased]
+## [1.8.0] - 2026-08-24
 
 ### Added
 
@@ -36,6 +36,9 @@ All notable changes to flutter-tvos will be documented here.
   understands, so apps that built before still build; `package:code_assets`
   throws on an unknown OS until 2.0.0, which `objective_c` and so most plugin
   graphs inherit today.
+
+  This release is CLI-only. The Flutter revision and the engine artifacts are
+  the pair 1.7.0 shipped, so `flutter-tvos precache` has nothing new to fetch.
 
 ## [1.7.0] - 2026-08-20
 

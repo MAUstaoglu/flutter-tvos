@@ -29,9 +29,9 @@ import 'package:flutter_tools/src/build_info.dart';
 import 'package:flutter_tools/src/build_system/build_system.dart' hide BuildResult;
 import 'package:flutter_tools/src/build_system/targets/native_assets.dart' show LinkHooks;
 import 'package:flutter_tools/src/features.dart';
-import 'package:flutter_tvos/build_targets/tvos_hooks.dart';
 import 'package:flutter_tools/src/isolated/native_assets/native_assets.dart';
 import 'package:flutter_tools/src/isolated/native_assets/targets.dart';
+import 'package:flutter_tvos/build_targets/tvos_hooks.dart';
 import 'package:hooks/hooks.dart';
 import 'package:hooks_runner/hooks_runner.dart';
 
@@ -216,7 +216,7 @@ void main() {
 
     testUsingContext('writes the result where CopyFlutterBundle reads it', () async {
       final runner = _RecordingBuildRunner();
-      final env = buildEnv();
+      final Environment env = buildEnv();
 
       await TvosBuildHooks(buildRunner: runner).build(env);
 
