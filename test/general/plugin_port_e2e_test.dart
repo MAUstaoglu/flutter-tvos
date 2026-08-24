@@ -238,7 +238,7 @@ void main() {
       final PluginSource source = SourceAnalyzer(fileSystem: fs).analyze(src);
       // WKWebView used at type/top-level scope (a stored property), not
       // inside a method-channel case — the porter can't stub this.
-      const String typeLevel = '''
+      const typeLevel = '''
 import Flutter
 import WebKit
 

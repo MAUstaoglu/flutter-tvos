@@ -83,7 +83,7 @@ class SourceSpec {
     if (mode == FetchMode.pub) {
       return identifier;
     }
-    var last = identifier.split('/').where((String s) => s.isNotEmpty).last;
+    String last = identifier.split('/').where((String s) => s.isNotEmpty).last;
     if (last.endsWith('.git')) {
       last = last.substring(0, last.length - 4);
     }
@@ -212,7 +212,7 @@ dependencies:
     }
     for (final Object? p in packages) {
       if (p is Map<String, Object?> && p['name'] == packageName) {
-        final String rootUri = (p['rootUri'] ?? '') as String;
+        final rootUri = (p['rootUri'] ?? '') as String;
         final Uri base = packageConfig.parent.uri;
         final Uri resolved = base.resolveUri(Uri.parse(rootUri));
         return _fs.directory(

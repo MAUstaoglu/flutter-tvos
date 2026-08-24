@@ -43,6 +43,17 @@ class TvosBuilder {
     // Used by AotElfBase to generate an AOT snapshot.
     final String targetPlatformName = getNameForTargetPlatform(TargetPlatform.ios);
 
+    // Read by the hooks target when it has to fall back to naming the iOS
+    // family — see `runTvosHooks`. That fallback feeds an `IOSCodeConfig`,
+    // whose `targetSdk` can only say `iPhoneOS` or `iPhoneSimulator`, so this is
+    // deliberately the *iPhone* SDK rather than the tvOS one: it keeps the value
+    // consistent with the config it ends up in instead of describing an SDK no
+    // hook will hear about. Only device-vs-simulator is read out of it, and the
+    // two SDKs agree on that.
+    final String sdkRoot = await globals.xcode!.sdkLocation(
+      tvosBuildInfo.simulator ? EnvironmentType.simulator : EnvironmentType.physical,
+    );
+
     final environment = Environment(
       projectDir: project.directory,
       outputDir: outputDir,
@@ -68,6 +79,7 @@ class TvosBuilder {
         kTargetFile: targetFile,
         kBuildMode: buildModeName,
         kTargetPlatform: targetPlatformName,
+        kSdkRoot: sdkRoot,
         ...buildInfo.toBuildSystemEnvironment(),
       },
       artifacts: globals.artifacts!,

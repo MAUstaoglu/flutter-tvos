@@ -1,0 +1,142 @@
+name: Tag release
+
+# Turns a version bump that has reached main into a tag and a GitHub Release.
+#
+# The version in pubspec.yaml is the trigger, deliberately: bumping it is
+# already a considered decision made in a reviewed pull request, so this
+# workflow carries that decision out rather than making a new one. Nothing here
+# decides *whether* to release.
+#
+# Ordering: a merge to dev runs Test, Test green runs Sync main, Sync main
+# fast-forwards main, and this runs after that. Reading the version from main
+# (not dev) means a release can only ever describe a commit that is on the
+# release branch.
+on:
+  workflow_run:
+    workflows: [Sync main]
+    types: [completed]
+  # Recovery hatch: re-run against whatever main holds now.
+  workflow_dispatch:
+
+# Two syncs landing close together would otherwise both read main, both see no
+# tag, and both try to create it — the loser failing on a ref that already
+# exists, which reads like a real error.
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    # Only tag a main that Sync main actually moved. workflow_dispatch carries
+    # no conclusion, so let it through explicitly.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.decide.outputs.tag }}
+      should_release: ${{ steps.decide.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # Tags are needed to tell "already released" from "not yet".
+          fetch-depth: 0
+
+      - name: Decide whether main needs a tag
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '[:space:]')
+          if [ -z "$VERSION" ]; then
+            echo "::error::pubspec.yaml has no version field."
+            exit 1
+          fi
+
+          # Tags name both halves of the pair: v<flutter>-tvos.<cli>, e.g.
+          # v3.47.1-tvos.1.7.0. The CLI version alone would drop the one thing
+          # the scheme exists to record — which Flutter release these artifacts
+          # and this CLI go together with — and the two move independently.
+          #
+          # Only the commit is pinned in the repository, so the release name is
+          # resolved back from it rather than duplicated into a second file that
+          # could disagree with the pin.
+          FLUTTER_COMMIT=$(tr -d '[:space:]' < bin/internal/flutter.version)
+          FLUTTER_VERSION=$(git ls-remote --tags https://github.com/flutter/flutter.git \
+            | awk -v sha="$FLUTTER_COMMIT" '$1 == sha { sub(/\^\{\}$/, "", $2); sub(/^refs\/tags\//, "", $2); print $2 }' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+          if [ -z "$FLUTTER_VERSION" ]; then
+            echo "::error::no flutter/flutter release tag points at $FLUTTER_COMMIT."
+            echo "The pin is either a pre-release or not on a tagged commit, so the"
+            echo "release cannot be named. Tag by hand, or pin a tagged release."
+            exit 1
+          fi
+          echo "Flutter pin $FLUTTER_COMMIT resolves to $FLUTTER_VERSION."
+
+          TAG="v$FLUTTER_VERSION-tvos.$VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          # The CLI version is the release decision, not the tag name. Those
+          # differ: the tag also carries the Flutter pin, so bumping
+          # bin/internal/flutter.version alone produces a name no tag holds yet
+          # and would publish a release for a CLI version nobody bumped and no
+          # CHANGELOG entry describes. Ask whether this *version* has shipped
+          # under any pin, not whether this exact tag exists.
+          SHIPPED=$(git tag -l "*-tvos.$VERSION" | head -1 || true)
+
+          # The normal case by a wide margin: most merges to main are not
+          # releases, so this exits quietly rather than treating it as notable.
+          #
+          # A tag with no Release behind it is the exception, and it is what the
+          # workflow_dispatch hatch exists for: the tag is pushed before the
+          # release job validates anything, so a failure there leaves one
+          # stranded. Asking about the Release rather than the tag is what lets
+          # a re-run finish the job instead of exiting as "already released".
+          if [ -n "$SHIPPED" ]; then
+            if gh release view "$SHIPPED" >/dev/null 2>&1; then
+              echo "$SHIPPED is already released — nothing to do."
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::warning::$SHIPPED exists with no Release behind it; finishing it."
+            echo "tag=$SHIPPED" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "skip_tag_push=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+          echo "main is at $VERSION with no tag — tagging $(git rev-parse HEAD)."
+
+      - name: Push the tag
+        if: >-
+          steps.decide.outputs.should_release == 'true' &&
+          steps.decide.outputs.skip_tag_push != 'true'
+        run: |
+          set -euo pipefail
+          # Annotated, so the tag records when and why it was created rather
+          # than being an anonymous pointer.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.decide.outputs.tag }}" \
+            -m "flutter-tvos ${{ steps.decide.outputs.tag }}" \
+            -m "Tagged automatically from main."
+          git push origin "${{ steps.decide.outputs.tag }}"
+
+  # Called rather than left to the tag push, which cannot trigger it: GitHub
+  # suppresses workflow triggers from pushes made with GITHUB_TOKEN. Relying on
+  # the trigger would leave the tag on the repository with no release built and
+  # nothing reporting a failure — so the release is invoked explicitly, and the
+  # suppression conveniently stops both entry points from firing at once.
+  release:
+    needs: tag
+    if: needs.tag.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}

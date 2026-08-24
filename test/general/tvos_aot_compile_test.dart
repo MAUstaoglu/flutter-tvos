@@ -33,8 +33,8 @@ import '../src/fake_process_manager.dart';
 import '../src/fakes.dart';
 
 void main() {
-  const String kVersionMinFlag = '-mtvos-version-min=15.0';
-  const String kSdkPath = '/sdks/AppleTVOS.sdk';
+  const kVersionMinFlag = '-mtvos-version-min=15.0';
+  const kSdkPath = '/sdks/AppleTVOS.sdk';
 
   late MemoryFileSystem fileSystem;
   late Cache cache;
@@ -62,7 +62,7 @@ void main() {
           artifacts.getGenSnapshotPath(BuildMode.release);
       fileSystem.file(genSnapshotPath).createSync(recursive: true);
 
-      final tvosProjectDir = fileSystem.directory('/app/tvos')..createSync(recursive: true);
+      final Directory tvosProjectDir = fileSystem.directory('/app/tvos')..createSync(recursive: true);
       fileSystem.file('/app/pubspec.yaml')
         ..createSync(recursive: true)
         ..writeAsStringSync('name: app\nversion: 1.0.0+1\n');

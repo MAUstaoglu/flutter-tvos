@@ -120,7 +120,7 @@ void main() {
     });
 
     testWithoutContext('clean source ports to identical content (plus newline)', () {
-      const String clean = '''
+      const clean = '''
 import Flutter
 
 public class FooPlugin: NSObject, FlutterPlugin {
@@ -148,7 +148,7 @@ public class FooPlugin: NSObject, FlutterPlugin {
     });
 
     testWithoutContext('widens the Pigeon/Flutter import guard to tvOS', () {
-      const String pigeon = '''
+      const pigeon = '''
 import Foundation
 
 #if os(iOS)
@@ -171,7 +171,7 @@ final class Foo {}
     });
 
     testWithoutContext('widens os(iOS) behaviour + messenger branches, keeps precedence', () {
-      const String src = '''
+      const src = '''
 func f() {
 #if os(iOS)
   let m = registrar.messenger()
@@ -204,7 +204,7 @@ func f() {
       // flutter_assets/ path. The `import FlutterMacOS` guard right
       // above it must stay macOS-only (tvOS uses the iOS Flutter
       // module). Synthetic fixture — no real plugin names.
-      const String src = '''
+      const src = '''
 import Foundation
 
 #if os(iOS)
@@ -248,7 +248,7 @@ func fileURLForAsset(_ key: String) -> String? {
     });
 
     testWithoutContext('widens @available/#available iOS clauses to tvOS', () {
-      const String src = '''
+      const src = '''
 @available(iOS 15.0, macOS 12.0, *)
 extension Foo {
   func bar() {
@@ -298,7 +298,7 @@ func macOnly() {}
       // top-level scope (not a stubbable handler) has its enclosing
       // declaration wrapped in `#if !os(tvOS)` so the rest of the
       // package still compiles. The clean helper below must survive.
-      const String src = '''
+      const src = '''
 import Flutter
 import SafariServices
 
@@ -317,7 +317,7 @@ func untouched() {
       final PortingResult r =
           SwiftPorter().port(src, fileRelativePath: 'tvos/Classes/Session.swift');
 
-      final Set<String> disabled = <String>{
+      final disabled = <String>{
         for (final PortingFinding f in r.findings)
           if (f.action == FindingAction.disabledOnTvos) f.pattern.name,
       };

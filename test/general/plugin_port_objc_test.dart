@@ -152,7 +152,7 @@ void main() {
     });
 
     testWithoutContext('widens ObjC availability annotations to tvOS', () {
-      const String src = '''
+      const src = '''
 - (void)a API_AVAILABLE(ios(14)) {
   if (@available(iOS 14.0, *)) {
     [info isiOSAppOnMac];

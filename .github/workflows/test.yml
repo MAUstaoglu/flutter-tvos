@@ -89,5 +89,16 @@ jobs:
       - name: Resolve dependencies
         run: flutter/bin/dart pub get
 
+      # --fatal-infos, and test/ and bin/ alongside lib/, so the analyzer gates
+      # a pull request the way the tests do. Without the flag `dart analyze`
+      # exits 0 on infos, which let 201 of them accumulate across lib/ and
+      # test/ while this job reported green.
       - name: Run dart analyze
-        run: flutter/bin/dart analyze lib/
+        run: flutter/bin/dart analyze --fatal-infos lib/ test/ bin/
+
+      # The plugin package resolves and analyzes separately; `flutter analyze`
+      # rather than `dart analyze` because it carries a `flutter:` SDK
+      # constraint and an example app.
+      - name: Analyze packages/flutter_tvos
+        working-directory: packages/flutter_tvos
+        run: ../../flutter/bin/flutter analyze --fatal-infos

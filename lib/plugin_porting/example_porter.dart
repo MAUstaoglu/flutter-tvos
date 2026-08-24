@@ -65,7 +65,7 @@ class ExamplePorter {
     }
     dst.createSync(recursive: true);
 
-    final List<String> copied = <String>[];
+    final copied = <String>[];
     for (final FileSystemEntity entity in src.listSync(recursive: true)) {
       if (entity is! File) {
         continue;
@@ -111,7 +111,7 @@ class ExamplePorter {
   /// already pins the real `<base>` from pub.dev and wires the local
   /// `<base>_tvos`, so dropping the overrides is both safe and required.
   List<String> _stripMonorepoWiring(List<String> lines) {
-    final List<String> out = <String>[];
+    final out = <String>[];
     for (var i = 0; i < lines.length; i++) {
       final String l = lines[i];
       // `resolution: workspace` — a top-level pub-workspace member flag.
@@ -120,7 +120,7 @@ class ExamplePorter {
       }
       // Entire top-level `dependency_overrides:` block.
       if (RegExp(r'^dependency_overrides:\s*$').hasMatch(l)) {
-        var j = i + 1;
+        int j = i + 1;
         while (j < lines.length &&
             (lines[j].isEmpty ||
                 lines[j].startsWith(' ') ||
@@ -153,7 +153,7 @@ class ExamplePorter {
     if (depsIdx == -1) {
       // No dependencies block — append a complete one.
       final String body = lines.join('\n');
-      final String sep = body.endsWith('\n') ? '' : '\n';
+      final sep = body.endsWith('\n') ? '' : '\n';
       return '$body$sep\ndependencies:\n'
           '  flutter:\n    sdk: flutter\n'
           '  $baseName: ^$baseVersion\n'
@@ -162,7 +162,7 @@ class ExamplePorter {
 
     // Find the end of the dependencies block (next col-0 line).
     int end = lines.length;
-    for (var i = depsIdx + 1; i < lines.length; i++) {
+    for (int i = depsIdx + 1; i < lines.length; i++) {
       final String l = lines[i];
       if (l.isNotEmpty && !l.startsWith(' ') && !l.startsWith('\t')) {
         end = i;
@@ -176,11 +176,11 @@ class ExamplePorter {
           (m.group(1) == baseName || m.group(1) == tvosPackageName);
     }
 
-    final List<String> kept = <String>[];
-    for (var i = depsIdx + 1; i < end; i++) {
+    final kept = <String>[];
+    for (int i = depsIdx + 1; i < end; i++) {
       if (isManagedKey(lines[i])) {
         // Skip this key and its indented continuation lines.
-        var j = i + 1;
+        int j = i + 1;
         while (j < end &&
             lines[j].startsWith('    ') &&
             lines[j].trim().isNotEmpty) {
@@ -192,7 +192,7 @@ class ExamplePorter {
       kept.add(lines[i]);
     }
 
-    final List<String> rebuilt = <String>[
+    final rebuilt = <String>[
       ...lines.sublist(0, depsIdx + 1),
       '  $baseName: ^$baseVersion',
       '  $tvosPackageName:',

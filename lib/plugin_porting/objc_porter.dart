@@ -63,15 +63,15 @@ class ObjcPorter {
   /// `tvos/Classes/URLLauncherPlugin.m`.
   PortingResult port(String source, {required String fileRelativePath}) {
     final List<String> lines = source.split('\n');
-    final List<String> out = <String>[...lines];
-    final List<PortingFinding> findings = <PortingFinding>[];
-    final Set<String> strippedImports = <String>{};
+    final out = <String>[...lines];
+    final findings = <PortingFinding>[];
+    final strippedImports = <String>{};
 
     // Pass 1 — map every line inside a recognised handler block to its
     // method name, and remember each block's body extent for stubbing.
-    final Map<int, String> methodAt = <int, String>{};
-    final Map<String, int> firstBody = <String, int>{};
-    final Map<String, int> lastBody = <String, int>{};
+    final methodAt = <int, String>{};
+    final firstBody = <String, int>{};
+    final lastBody = <String, int>{};
     _detectHandlers(lines, methodAt, firstBody, lastBody);
 
     // Pass 1b — make tvOS follow the iOS code paths. The Objective-C
@@ -174,10 +174,10 @@ class ObjcPorter {
     }
 
     // Pass 3 — API pattern scan over non-import lines.
-    final Set<String> stubbed = <String>{};
+    final stubbed = <String>{};
     // line index → unsupported API name; enclosing construct is wrapped
     // in `#if !TARGET_OS_TV` so the package still compiles on tvOS.
-    final Map<int, String> disableAnchors = <int, String>{};
+    final disableAnchors = <int, String>{};
     for (var i = 0; i < lines.length; i++) {
       final String line = lines[i];
       final String lt = line.trimLeft();
@@ -235,14 +235,14 @@ class ObjcPorter {
 
     // Pass 4 — stub the body of every handler that touched an
     // unsupported API.
-    for (final String method in stubbed) {
+    for (final method in stubbed) {
       final int? first = firstBody[method];
       final int? last = lastBody[method];
       if (first == null || last == null || first > last) {
         continue;
       }
-      String indent = '  ';
-      for (var i = first; i <= last; i++) {
+      var indent = '  ';
+      for (int i = first; i <= last; i++) {
         if (lines[i].trim().isNotEmpty) {
           indent = lines[i].substring(
             0,
@@ -251,12 +251,12 @@ class ObjcPorter {
           break;
         }
       }
-      for (var i = first; i <= last; i++) {
+      for (int i = first; i <= last; i++) {
         if (out[i].isNotEmpty) {
           out[i] = '// ${out[i]}';
         }
       }
-      final String stub =
+      final stub =
           '${indent}result(FlutterMethodNotImplemented);  // TODO(porter): tvOS-incompatible API stubbed';
       out[first] = '$stub\n${out[first]}';
     }
@@ -308,7 +308,7 @@ class ObjcPorter {
       // line: in an `if (...) { ... } else if (...) { ... }` chain the
       // closing `}` and the next opening `{` share a line, so a per-line
       // depth check would never see depth return to 0.
-      int depth = 0;
+      var depth = 0;
       int? openLine;
       int? closeLine;
       for (var scan = i; scan < lines.length && closeLine == null; scan++) {
@@ -369,16 +369,16 @@ class ObjcPorter {
     List<String> orig,
     Map<int, String> anchors,
   ) {
-    final List<List<int>> ranges = <List<int>>[];
-    final Map<int, Set<String>> namesByStart = <int, Set<String>>{};
+    final ranges = <List<int>>[];
+    final namesByStart = <int, Set<String>>{};
     for (final MapEntry<int, String> e in anchors.entries) {
       final List<int> r = _objcMemberRange(orig, e.key);
       ranges.add(r);
       namesByStart.putIfAbsent(r[0], () => <String>{}).add(e.value);
     }
     ranges.sort((List<int> a, List<int> b) => a[0].compareTo(b[0]));
-    final List<List<int>> merged = <List<int>>[];
-    for (final List<int> r in ranges) {
+    final merged = <List<int>>[];
+    for (final r in ranges) {
       if (merged.isNotEmpty && r[0] <= merged.last[1]) {
         if (r[1] > merged.last[1]) {
           merged.last[1] = r[1];
@@ -389,7 +389,7 @@ class ObjcPorter {
         merged.add(<int>[r[0], r[1]]);
       }
     }
-    final List<String> result = <String>[];
+    final result = <String>[];
     var ri = 0;
     for (var i = 0; i < out.length; i++) {
       if (ri < merged.length && i == merged[ri][0]) {
@@ -428,7 +428,7 @@ class ObjcPorter {
         if (i == a) {
           // Token on the @implementation/@interface line itself: wrap to
           // the matching @end.
-          for (var j = i + 1; j < lines.length; j++) {
+          for (int j = i + 1; j < lines.length; j++) {
             if (lines[j].trimLeft().startsWith('@end')) {
               return <int>[i, j];
             }

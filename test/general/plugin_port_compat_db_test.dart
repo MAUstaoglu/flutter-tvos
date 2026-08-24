@@ -128,7 +128,7 @@ void main() {
 
     for (final ApiPattern p in compatibilityDatabase) {
       testWithoutContext('${p.name}: matches a real use, ignores look-alikes', () {
-        final RegExp re = RegExp(p.pattern);
+        final re = RegExp(p.pattern);
         final ({String negative, String positive}) s = _samples[p.name]!;
         expect(re.hasMatch(s.positive), isTrue,
             reason: '${p.name} regex should match: ${s.positive}');

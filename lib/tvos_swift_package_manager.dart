@@ -98,7 +98,7 @@ class TvosSwiftPackageManager {
     final Directory packagesDir = packageDirectory.childDirectory('.packages');
     packagesDir.createSync(recursive: true);
     final pluginRefs = <_PluginRef>[];
-    for (final TvosSpmPlugin plugin in plugins) {
+    for (final plugin in plugins) {
       final Link link = packagesDir.childLink(plugin.name);
       if (link.existsSync()) {
         link.deleteSync();

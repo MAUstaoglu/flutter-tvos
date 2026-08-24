@@ -70,7 +70,7 @@ class Scaffolder {
     if (source.ffiNativeAssets) {
       final Map<String, String> files = const NativeSkeleton()
           .files(source: source, licenseHolder: licenseHolder);
-      final List<String> written = <String>[];
+      final written = <String>[];
       String? reportPath;
       for (final MapEntry<String, String> e in files.entries) {
         if (!emitReport && e.key == 'PORTING_REPORT.md') {
@@ -157,7 +157,7 @@ class Scaffolder {
     // output package) instead of hand-writing a guessed stub that would
     // not compile. Falls back to the templated stub when the source has
     // no Dart `lib/` (rare).
-    final List<String> prunedDartFiles = <String>[];
+    final prunedDartFiles = <String>[];
     plan.addAll(_dartLibPlans(
       source,
       outputDirectory,
@@ -173,19 +173,19 @@ class Scaffolder {
     // no native files at all.
     final Directory tvosClassesDir = outputDirectory.childDirectory('tvos').childDirectory('Classes');
     final List<_NativeCopy> allNative = _collectNativeCopies(source, tvosClassesDir);
-    const Set<String> swiftExt = <String>{'.swift'};
-    const Set<String> objcExt = <String>{'.h', '.m', '.mm'};
-    final List<_NativeCopy> nativeCopies = <_NativeCopy>[
+    const swiftExt = <String>{'.swift'};
+    const objcExt = <String>{'.h', '.m', '.mm'};
+    final nativeCopies = <_NativeCopy>[
       for (final _NativeCopy c in allNative)
         if (!swiftExt.contains(_fs.path.extension(c.source.path).toLowerCase()) &&
             !objcExt.contains(_fs.path.extension(c.source.path).toLowerCase()))
           c,
     ];
-    final List<_PortedFile> portedFiles = <_PortedFile>[];
-    final List<PortingResult> portResults = <PortingResult>[];
-    final SwiftPorter swiftPorter = SwiftPorter();
-    final ObjcPorter objcPorter = ObjcPorter();
-    for (final _NativeCopy c in allNative) {
+    final portedFiles = <_PortedFile>[];
+    final portResults = <PortingResult>[];
+    final swiftPorter = SwiftPorter();
+    final objcPorter = ObjcPorter();
+    for (final c in allNative) {
       final String ext = _fs.path.extension(c.source.path).toLowerCase();
       final bool isSwift = swiftExt.contains(ext);
       final bool isObjc = objcExt.contains(ext);
@@ -335,8 +335,8 @@ class Scaffolder {
     // into kept vs. pruned. `rel` is the path inside `lib/`; the entry
     // file rename to `<out>.dart` happens later when emitting plans, so
     // pruning decisions are made on the un-renamed source path.
-    final List<String> keptRel = <String>[];
-    final List<String> droppedRel = <String>[];
+    final keptRel = <String>[];
+    final droppedRel = <String>[];
     for (final FileSystemEntity e in srcLib.listSync(recursive: true)) {
       if (e is! File || _fs.path.extension(e.path).toLowerCase() != '.dart') {
         continue;
@@ -357,10 +357,10 @@ class Scaffolder {
     // and `import 'package:<out>/src/foo_linux.dart'` against it.
     final Set<String> droppedSet = droppedRel.toSet();
 
-    final List<_Plan> plans = <_Plan>[];
-    for (final String rel in keptRel) {
+    final plans = <_Plan>[];
+    for (final rel in keptRel) {
       final File srcFile = _fs.file(_fs.path.join(srcLib.path, rel));
-      final String destRel = rel == '${source.packageName}.dart'
+      final destRel = rel == '${source.packageName}.dart'
           ? '${source.outputPackageName}.dart'
           : rel;
       String content = srcFile.readAsStringSync().replaceAll(
@@ -403,7 +403,7 @@ class Scaffolder {
   /// AVFoundation exist there).
   bool _isCrossPlatformDart(String relPath) {
     final String normalized = relPath.toLowerCase().replaceAll(r'\', '/');
-    const Set<String> nonApplePathSegments = <String>{
+    const nonApplePathSegments = <String>{
       'web',
       'web_impl',
       'windows',
@@ -416,7 +416,7 @@ class Scaffolder {
       }
     }
     final String base = normalized.split('/').last;
-    final RegExp suffix = RegExp(
+    final suffix = RegExp(
       r'_(linux|windows|web|android|macos|osx|io)(?:_plugin)?\.dart$',
     );
     return suffix.hasMatch(base);
@@ -453,7 +453,7 @@ class Scaffolder {
     String? resolveToLibRel(String literal) {
       final String trimmed = literal.trim();
       // package: form — only ours counts.
-      const String pkgPrefix = 'package:';
+      const pkgPrefix = 'package:';
       if (trimmed.startsWith(pkgPrefix)) {
         final String rest = trimmed.substring(pkgPrefix.length);
         final int slash = rest.indexOf('/');
@@ -470,12 +470,12 @@ class Scaffolder {
       final String fromDir = fromRel.contains('/')
           ? fromRel.substring(0, fromRel.lastIndexOf('/'))
           : '';
-      final List<String> parts = <String>[
+      final parts = <String>[
         if (fromDir.isNotEmpty) ...fromDir.split('/'),
         ...trimmed.split('/'),
       ];
-      final List<String> stack = <String>[];
-      for (final String part in parts) {
+      final stack = <String>[];
+      for (final part in parts) {
         if (part.isEmpty || part == '.') {
           continue;
         }
@@ -495,10 +495,10 @@ class Scaffolder {
     // `part of 'parent.dart'` is intentionally excluded: the `of` keyword
     // sits between `part` and the opening quote, so it does not match
     // `(import|export|part)\s+(['"])`.
-    final RegExp directive = RegExp(
+    final directive = RegExp(
       r"""^(\s*)(import|export|part)\s+(['"])([^'"]+)\3"""
       r"""(\s+if\s*\(\s*[^)]*\)\s+(['"])([^'"]+)\6)?"""
-      r"""([^;\n]*);?\s*$""",
+      r'''([^;\n]*);?\s*$''',
       multiLine: true,
     );
 
@@ -540,7 +540,7 @@ class Scaffolder {
   /// macOS-only platform target is dropped: tvOS shares UIKit with iOS,
   /// so the `<pkg>_ios` target is the right sibling to keep.
   List<_NativeCopy> _collectNativeCopies(PluginSource source, Directory destination) {
-    const Set<String> nativeExt = <String>{'.swift', '.h', '.m', '.mm'};
+    const nativeExt = <String>{'.swift', '.h', '.m', '.mm'};
     if (source.isMultiTargetSpm) {
       final Directory root = source.spmSourcesRoot!;
       if (!root.existsSync()) {
@@ -594,7 +594,7 @@ class Scaffolder {
     // Legacy layout: `<platform>/Resources/` next to `<platform>/Classes/`.
     // SwiftPM layout: `Sources/<target>/Resources/` *inside* the target
     // directory (declared via `.process("Resources")` in Package.swift).
-    for (final Directory candidate in <Directory>[
+    for (final candidate in <Directory>[
       source.classesDirectory.parent.childDirectory('Resources'),
       source.classesDirectory.childDirectory('Resources'),
     ]) {

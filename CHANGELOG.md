@@ -2,6 +2,67 @@
 
 All notable changes to flutter-tvos will be documented here.
 
+## [1.8.0] - 2026-08-24
+
+### Added
+
+- **Dart build hooks now run for tvOS, and are told they are building for
+  tvOS** rather than for the iOS family.
+
+  A build hook can produce *data* assets: files generated on the host by
+  ordinary Dart and chosen for the platform being built, which is how a 3D or
+  shader package compiles its GPU bundles. tvOS skipped that pass entirely,
+  because the same pass also carries Dart *code* assets, which a tvOS app never
+  uses — its plugins are native and resolved by the package manager.
+
+  Skipping it meant such a package shipped whatever its generated directory
+  happened to hold: output left behind by a macOS or simulator build of the same
+  tree, or nothing at all. Neither failed the build, so the app simply rendered
+  wrong.
+
+  The pass now runs, driven directly rather than through flutter_tools'
+  translation layer, which maps its own closed set of target platforms onto the
+  hooks protocol and has no tvOS in it. A hook is told `target_os: tvos`, so a
+  package picking a per-platform output picks the right one instead of guessing.
+  Hot reload runs the same pass, so a reload and a build no longer disagree.
+
+  Code assets are requested and then discarded — the protocol carries the target
+  OS inside the code-asset config, so asking is the only way to say `tvos` — and
+  nothing a code-asset hook produces is installed into a tvOS app. The app
+  bundle is unchanged.
+
+  **Requires `flutter config --enable-dart-data-assets`.** Dart data assets are
+  off by default. With them off the pass does not run at all and says so,
+  naming the packages whose hooks were skipped and the command that turns them
+  on — running the hooks to collect assets nobody asked for would be cost
+  without benefit, and cost that can fail a build.
+
+  An app with no hook-carrying packages is unaffected. A hook that cannot cope
+  with an unfamiliar target OS makes the pass retry under the iOS-family name it
+  understands, so apps that built before still build; `package:code_assets`
+  throws on an unknown OS until 2.0.0, which `objective_c` and so most plugin
+  graphs inherit today.
+
+  **Known boundary: a hook cannot tell device from simulator.** The protocol
+  carries that in a per-OS sub-config — `IOSCodeConfig.targetSdk`, and there is
+  an Android and a macOS one — and there is no tvOS sub-config to carry it in.
+  Both builds are arm64, so a device build and a simulator build hand a hook
+  byte-identical input and share one hook cache entry. A hook that ships source
+  is unaffected; one that precompiles per-platform binaries is not, and a Metal
+  library built for `appletvos` will not create pipelines on the simulator or
+  the reverse. The iOS-family fallback does keep the distinction, so on this one
+  point the fallback is better off than the accurate path.
+
+  One case does regress, and it is the price of running hooks that never ran
+  here before: an app whose hook fails for a reason that is not the target OS —
+  a missing Rust toolchain, a compile error — built on 1.7.0 and fails on 1.8.0.
+  The retry cannot help there, because every failure reaches this pass as the
+  same empty result; the hook's own error is printed above the failure, and the
+  build stops rather than shipping assets it could not produce.
+
+  This release is CLI-only. The Flutter revision and the engine artifacts are
+  the pair 1.7.0 shipped, so `flutter-tvos precache` has nothing new to fetch.
+
 ## [1.7.0] - 2026-08-20
 
 ### Changed
