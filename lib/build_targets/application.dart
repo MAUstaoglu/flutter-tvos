@@ -30,6 +30,7 @@ import '../tvos_artifacts.dart';
 import '../tvos_build_info.dart';
 import '../tvos_plugins.dart';
 import '../tvos_swift_package_manager.dart';
+import 'tvos_hooks.dart';
 
 /// Writes `.dart_tool/flutter_build/dart_plugin_registrant.dart` with tvOS-
 /// aware plugin registrations, as a proper build target.
@@ -256,6 +257,13 @@ class TvosCopyFlutterBundle extends CopyFlutterBundle {
     // native `*_tvos` package instead. So skipping the native-assets
     // step is correct here, not a workaround — tvOS plugins are plain
     // Swift built via CocoaPods, never via Dart code-assets.
+    //
+    // Data assets are not in that boat: they are built on the host by ordinary
+    // Dart — a 3D or shader package compiling its GPU bundles for the
+    // target, say. Skipping them silently shipped whatever a package's
+    // generated directory happened to hold, so run that half on its own, and
+    // run it as tvOS rather than as iOS.
+    TvosBuildHooks(),
     TvosKernelSnapshot(),
   ];
 
