@@ -162,12 +162,14 @@ end
 /// - **Flutter resolved via the `FlutterFramework` package.** The target
 ///   declares a `.package(name: "FlutterFramework", path: "../FlutterFramework")`
 ///   dependency so it can `import Flutter`. flutter-tvos generates that package
-///   (a binary target wrapping `Flutter.xcframework`) as a sibling of this one
-///   under the app's ephemeral SwiftPM packages, so the relative path resolves
-///   at build time — matching stock Flutter's plugin `Package.swift`. (A
-///   standalone `swift build` of the ported plugin outside an app has no sibling
-///   `FlutterFramework` and will not resolve; consume it through a flutter-tvos
-///   app build, exactly as with the CocoaPods podspec.)
+///   as a sibling of this one under the app's ephemeral SwiftPM packages, so the
+///   relative path resolves at build time — matching stock Flutter's plugin
+///   `Package.swift`. The package itself is empty: what makes `import Flutter`
+///   work is the engine flutter-tvos stages into `BUILT_PRODUCTS_DIR` before the
+///   build, which is where SwiftPM target compiles look for frameworks. (A
+///   standalone `swift build` of the ported plugin outside an app has neither,
+///   and will not resolve; consume it through a flutter-tvos app build, exactly
+///   as with the CocoaPods podspec.)
 /// - **`TARGET_OS_TV`.** Mirrors the podspec's `OTHER_SWIFT_FLAGS` so Swift
 ///   `#if TARGET_OS_TV` branches stay active under SwiftPM.
 ///
@@ -201,10 +203,11 @@ let package = Package(
     .library(name: "$libraryName", targets: ["$name"]),
   ],
   dependencies: [
-    // Lets the target `import Flutter`. flutter-tvos generates a FlutterFramework
-    // package (binary target wrapping Flutter.xcframework) as a sibling of this
-    // package under the app's ephemeral SwiftPM packages, so `../FlutterFramework`
-    // resolves at build time. Matches stock Flutter's plugin Package.swift.
+    // Lets the target `import Flutter`. flutter-tvos generates the (empty)
+    // FlutterFramework package as a sibling of this one under the app's
+    // ephemeral SwiftPM packages, so `../FlutterFramework` resolves at build
+    // time, and stages Flutter.framework into BUILT_PRODUCTS_DIR, where the
+    // compiler finds it. Matches stock Flutter's plugin Package.swift.
     .package(name: "FlutterFramework", path: "../FlutterFramework"),
   ],
   targets: [

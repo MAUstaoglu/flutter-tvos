@@ -352,52 +352,81 @@ void main() {
     }
   });
 
-  // --- Embedded Flutter.framework is re-signed with the app identity ------
+  // --- The app embeds and signs the Flutter engine itself ------------------
   //
-  // The Flutter engine is pulled into the app bundle transitively through the
-  // static FlutterGeneratedPluginSwiftPackage umbrella (a .binaryTarget on the
-  // dynamic Flutter.xcframework). Xcode embeds it but does NOT code-sign it,
-  // so without this phase a device build embeds the framework exactly as
-  // shipped — origin-signed by the flutter-tvos maintainer's team — and
-  // nested code signed by a foreign team can fail device installs. A dedicated
-  // build phase re-signs it with the app's own identity (like CocoaPods'
-  // embed script used to).
+  // The generated FlutterFramework Swift package is empty (it only keeps the
+  // `../FlutterFramework` dependency in every federated plugin manifest
+  // resolvable), so nothing embeds the engine implicitly any more. Two
+  // project-side steps replace it, mirroring upstream Flutter's iOS pipeline
+  // after flutter/flutter#181739:
   //
-  // NOTE: this phase is NOT the ITMS-91065 ("Missing signature") fix. Apple's
-  // commonly-used-SDK check requires the SDK's ORIGIN signature on the
-  // artifact as vended to the build; an app-identity re-sign does not satisfy
-  // it (proven by real App Store submissions rejected with ITMS-91065 both
-  // with and without this phase). ITMS-91065 is fixed by signing the engine
-  // artifact at packaging time (engine/build.sh --signing-identity).
-  group('Xcode project signs the embedded Flutter.framework', () {
+  //   * the scheme's "Prepare Flutter framework" pre-action stages
+  //     Flutter.framework into BUILT_PRODUCTS_DIR, where the Swift package
+  //     targets look for frameworks (without it: "no such module Flutter"), and
+  //   * the "Embed Flutter.framework" build phase copies it into the bundle and
+  //     signs it with the app's own identity.
+  //
+  // The signature is what keeps the engine out of an ITMS-91065 ("Missing
+  // signature") rejection at external Beta App Review: Flutter is on Apple's
+  // commonly-used-SDK list, and an unsigned framework uploads and passes
+  // internal TestFlight before being rejected there. Upstream signs the engine
+  // it copies the same way, with the app identity rather than the SDK vendor's.
+  group('Xcode project embeds and signs Flutter.framework', () {
     const fs = LocalFileSystem();
 
     for (final relativePath in <String>[
       'templates/app/swift/tvos.tmpl/Runner.xcodeproj/project.pbxproj.tmpl',
       'packages/flutter_tvos/example/tvos/Runner.xcodeproj/project.pbxproj',
     ]) {
-      test('$relativePath has a "Sign Flutter.framework" run-script phase', () {
+      test('$relativePath has an "Embed Flutter.framework" run-script phase', () {
         final File file = fs.file(relativePath);
         expect(file.existsSync(), isTrue, reason: 'expected to find $relativePath from package root');
         final String pbxproj = file.readAsStringSync();
 
         // The phase is declared and wired into the target's build phases
         // (appears at least twice: buildPhases list + phase definition).
-        expect(pbxproj, contains('/* Sign Flutter.framework */'));
-        expect('/* Sign Flutter.framework */'.allMatches(pbxproj).length, greaterThanOrEqualTo(2));
+        expect(pbxproj, contains('/* Embed Flutter.framework */'));
+        expect('/* Embed Flutter.framework */'.allMatches(pbxproj).length, greaterThanOrEqualTo(2));
 
-        // It must run AFTER Xcode embeds the SPM framework, so it is the last
-        // build phase (after "Copy flutter_assets") in the buildPhases list.
+        // Nothing else embeds the engine now, so the phase must be the last
+        // one (after "Copy flutter_assets") in the buildPhases list.
         final int copyAssets = pbxproj.indexOf('9740EEB31CF901A200538489 /* Copy flutter_assets */,');
-        final int signFlutter = pbxproj.indexOf('AAF50000000000000000F00D /* Sign Flutter.framework */,');
+        final int embedFlutter = pbxproj.indexOf('AAF50000000000000000F00D /* Embed Flutter.framework */,');
         expect(copyAssets, greaterThanOrEqualTo(0));
-        expect(signFlutter, greaterThan(copyAssets),
-            reason: 'Sign Flutter.framework must be listed after Copy flutter_assets');
+        expect(embedFlutter, greaterThan(copyAssets),
+            reason: 'Embed Flutter.framework must be listed after Copy flutter_assets');
 
-        // The script codesigns Flutter.framework with the app's own identity.
-        expect(pbxproj, contains(r'Frameworks/Flutter.framework'));
+        // It copies the staged engine into the bundle...
+        expect(pbxproj, contains(r'$(PROJECT_DIR)/Flutter/Flutter.framework'));
+        expect(pbxproj, contains(r'${CODESIGNING_FOLDER_PATH}/Frameworks'));
+        // ...without the compile-time-only directories...
+        expect(pbxproj, contains(r'--filter \"- Headers\"'));
+        expect(pbxproj, contains(r'--filter \"- Modules\"'));
+        // ...and signs it with the app's own identity.
         expect(pbxproj, contains(r'codesign --force --sign'));
         expect(pbxproj, contains(r'EXPANDED_CODE_SIGN_IDENTITY'));
+      });
+    }
+
+    for (final relativePath in <String>[
+      'templates/app/swift/tvos.tmpl/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme.tmpl',
+      'packages/flutter_tvos/example/tvos/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme',
+    ]) {
+      test('$relativePath stages the engine in a build pre-action', () {
+        final File file = fs.file(relativePath);
+        expect(file.existsSync(), isTrue, reason: 'expected to find $relativePath from package root');
+        final String scheme = file.readAsStringSync();
+
+        expect(scheme, contains('<PreActions>'));
+        expect(scheme, contains('title = "Prepare Flutter framework"'));
+        // The copy must land in BUILT_PRODUCTS_DIR: that, not the project
+        // directory, is what SwiftPM target compiles search.
+        expect(scheme, contains(r'BUILT_PRODUCTS_DIR'));
+        // The pre-action needs the Runner target's build settings, which it
+        // only gets through an EnvironmentBuildable.
+        expect(scheme, contains('<EnvironmentBuildable>'));
+        // It must run before the build, i.e. inside BuildAction.
+        expect(scheme.indexOf('<PreActions>'), lessThan(scheme.indexOf('<BuildActionEntries>')));
       });
     }
   });

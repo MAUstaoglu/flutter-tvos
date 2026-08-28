@@ -2,6 +2,59 @@
 
 All notable changes to flutter-tvos will be documented here.
 
+## [Unreleased]
+
+### Changed
+
+- **Flutter 3.47.1 → 3.47.2.** The tvOS patch set applied to the new tree with no
+  changes at all (20/20 patches, zero content churn), and none of the upstream
+  build-graph classes the CLI mirrors — `KernelSnapshot`, `CopyFlutterBundle`,
+  `DartPluginRegistrantTarget`, `AotElfRelease` — moved. Engine artifacts rebuilt
+  from the 3.47.2 tree (Dart 3.13.2), unsigned.
+
+- **The app embeds and signs the Flutter engine itself, instead of letting Xcode
+  do it from a Swift package.** This is the pipeline upstream Flutter moved back
+  to in [flutter/flutter#181739](https://github.com/flutter/flutter/pull/181739)
+  and still uses.
+
+  Until now the engine was vended to the build as a SwiftPM `.binaryTarget` on
+  `Flutter.xcframework`, pulled into the bundle transitively through the plugin
+  umbrella. Xcode embedded it but never signed it — undocumented behaviour that
+  a separate "Sign Flutter.framework" phase had to compensate for, and that
+  leaves an unsigned engine in the bundle the moment that phase does not run.
+
+  Three explicit steps replace it. `flutter-tvos build/run` stages the engine at
+  `tvos/Flutter/Flutter.framework` as before; a new **"Prepare Flutter
+  framework"** scheme pre-action (and the CLI itself) copies it into
+  `BUILT_PRODUCTS_DIR`, where SwiftPM target compiles look for frameworks; and a
+  new **"Embed Flutter.framework"** build phase copies it into the app —
+  without the compile-time-only `Headers`/`Modules` — and signs it with the
+  app's own identity. The generated `FlutterFramework` package is now empty: it
+  exists only so each plugin's `../FlutterFramework` dependency resolves.
+
+  Existing projects keep working untouched: a Runner project without the new
+  phases stays on the old binary-target package and its "Sign Flutter.framework"
+  phase, with a build warning pointing at the migration. Federated plugins need
+  no change — their manifests already declare the dependency the same way
+  upstream's do.
+
+- **Origin-signing the engine artifacts is now optional.** Apple's ITMS-91065
+  check reads the signature on the engine copy inside the submitted app, which
+  is the app's own — upstream destroys FLUTTER.IO's Developer ID signature by
+  thinning and re-signing, and those apps pass review. `engine/build.sh` no
+  longer refuses to `--publish` without `--signing-identity`, and
+  `engine/verify_artifacts.sh` verifies whatever signature an artifact carries
+  rather than demanding a Developer ID one (`TVOS_ENGINE_REQUIRE_ORIGIN_SIGNING=1`
+  restores the strict gate).
+
+### Added
+
+- **Device builds now fail if the built app has no engine, or an engine whose
+  signature does not verify.** With the artifact no longer guaranteed to be
+  signed, the app-side signature is the only one; an unsigned engine uploads
+  fine and passes internal TestFlight before being rejected at external Beta App
+  Review with ITMS-91065, so it is caught at build time instead.
+
 ## [1.8.0] - 2026-08-24
 
 ### Added

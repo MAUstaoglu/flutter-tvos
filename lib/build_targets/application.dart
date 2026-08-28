@@ -507,6 +507,17 @@ class NativeTvosBundle extends Target {
     final configuration = buildInfo.buildInfo.isDebug ? 'Debug' : 'Release';
     final String symroot = project.directory.childDirectory('build').childDirectory('tvos').path;
 
+    // Put the engine where every SwiftPM target looks for frameworks, before
+    // anything compiles. The Runner scheme's "Prepare Flutter framework"
+    // pre-action does the same thing (it is what covers an archive started from
+    // Xcode), but a pre-action runs with Xcode's environment, not this
+    // invocation's, so repeat it here against the SYMROOT we are about to pass.
+    _stageFlutterFrameworkForProducts(
+      tvosProjectDir,
+      symroot,
+      '$configuration-${buildInfo.sdkName}',
+    );
+
     final bool hasWorkspace = tvosProjectDir.childDirectory('Runner.xcworkspace').existsSync();
 
     // Code signing settings for physical device builds
@@ -558,9 +569,9 @@ class NativeTvosBundle extends Target {
     // would otherwise scroll an earlier warning out of view. Only signed
     // (device) builds care: the simulator never signs and is never submitted.
     if (!buildInfo.simulator) {
-      // Warn if the Runner project can't code-sign the SPM-embedded Flutter
-      // engine (see the method doc).
-      _warnIfFlutterFrameworkUnsigned(tvosProjectDir);
+      // Warn if the Runner project still gets its engine from SwiftPM instead
+      // of the prepare/embed phases (see the method doc).
+      _warnIfLegacyEnginePipeline(tvosProjectDir);
       // Warn if the Runner project's build phases predate 1.4.0 and resolve the
       // bundle via ${PRODUCT_NAME}.app under a custom product name.
       _warnIfStalePbxprojBundlePath(tvosProjectDir);
@@ -595,6 +606,13 @@ class NativeTvosBundle extends Target {
     // have the build phase added) to ship to TestFlight.
     if (!buildInfo.buildInfo.isDebug) {
       await _embedAppFrameworkFallback(tvosProjectDir, symroot, platformSuffix);
+    }
+
+    // The engine is the one payload the app cannot start without, and an
+    // unsigned copy still installs from Xcode while being rejected at App Store
+    // review (ITMS-91065) — a failure that otherwise surfaces days later.
+    if (!buildInfo.simulator) {
+      await _verifyEmbeddedFlutterFramework(symroot, platformSuffix);
     }
 
     globals.logger.printTrace('tvOS application built: build/tvos/$platformSuffix/Runner.app');
@@ -815,31 +833,39 @@ class NativeTvosBundle extends Target {
   }
 
   /// Generates the Swift Package Manager packages the Runner Xcode project
-  /// references: `FlutterFramework` (binary target wrapping `Flutter.xcframework`)
-  /// and the `FlutterGeneratedPluginSwiftPackage` umbrella that depends on it
-  /// plus every tvOS plugin shipping a `tvos/Package.swift`.
+  /// references: `FlutterFramework` (empty — the engine is staged into
+  /// `BUILT_PRODUCTS_DIR` instead) and the `FlutterGeneratedPluginSwiftPackage`
+  /// umbrella that depends on it plus every tvOS plugin shipping a
+  /// `tvos/Package.swift`.
   ///
   /// Written under `tvos/Flutter/ephemeral/Packages/`. Always generated — the
   /// project template always references the umbrella, so the reference must
   /// resolve even when the app has no SPM plugins (then the umbrella depends on
   /// `FlutterFramework` only).
   void _generateSwiftPackages(FlutterProject project, Directory tvosProjectDir) {
-    final tvosArtifacts = globals.artifacts! as TvosArtifacts;
-    final EnvironmentType envType = buildInfo.simulator
-        ? EnvironmentType.simulator
-        : EnvironmentType.physical;
-    final Directory xcframework = globals.fs.directory(
-      tvosArtifacts.getArtifactPath(
-        Artifact.flutterXcframework,
-        mode: buildInfo.buildInfo.mode,
-        environmentType: envType,
-      ),
-    );
-    if (!xcframework.existsSync()) {
-      throwToolExit(
-        'Flutter.xcframework not found at ${xcframework.path}.\n'
-        'Run "flutter-tvos precache" to download the tvOS engine artifacts first.',
+    // A project generated before the "Embed Flutter.framework" build phase has
+    // nothing of its own that puts the engine in the bundle, so it stays on the
+    // binary-target package Xcode embeds implicitly. Everything else gets the
+    // empty package plus the explicit prepare/embed steps, matching upstream.
+    Directory? legacyXcframework;
+    if (!_projectEmbedsFlutterFramework(tvosProjectDir)) {
+      final tvosArtifacts = globals.artifacts! as TvosArtifacts;
+      final EnvironmentType envType = buildInfo.simulator
+          ? EnvironmentType.simulator
+          : EnvironmentType.physical;
+      legacyXcframework = globals.fs.directory(
+        tvosArtifacts.getArtifactPath(
+          Artifact.flutterXcframework,
+          mode: buildInfo.buildInfo.mode,
+          environmentType: envType,
+        ),
       );
+      if (!legacyXcframework.existsSync()) {
+        throwToolExit(
+          'Flutter.xcframework not found at ${legacyXcframework.path}.\n'
+          'Run "flutter-tvos precache" to download the tvOS engine artifacts first.',
+        );
+      }
     }
 
     final Directory packagesDir = tvosProjectDir
@@ -859,7 +885,7 @@ class NativeTvosBundle extends Target {
       packageDirectory: umbrellaDir
           .childDirectory('.packages')
           .childDirectory(TvosSwiftPackageManager.kFlutterFrameworkPackageName),
-      xcframework: xcframework,
+      legacyXcframework: legacyXcframework,
     );
     final List<TvosSpmPlugin> spmPlugins = discoverTvosSpmPlugins(project);
     spm.generatePluginsSwiftPackage(
@@ -961,42 +987,153 @@ class NativeTvosBundle extends Target {
     return missing;
   }
 
-  /// Warns if the Runner project lacks the "Sign Flutter.framework" build phase.
+  /// Whether the Runner project embeds the engine itself, through the "Embed
+  /// Flutter.framework" build phase, rather than relying on Xcode's implicit
+  /// embed of the `FlutterFramework` binary target.
   ///
-  /// The engine is pulled into the app bundle transitively through the static
-  /// `FlutterGeneratedPluginSwiftPackage` umbrella as a dynamic binary
-  /// framework. Xcode embeds it but does NOT code-sign it (it is not an explicit
-  /// "Embed & Sign" product on the Runner target). The phase re-signs the
-  /// embedded engine with the app's own identity (like CocoaPods' embed script
-  /// did) so device installs and dev builds don't carry a framework signed by a
-  /// foreign team — the engine artifact itself ships ORIGIN-signed by
-  /// flutter-tvos.
-  ///
-  /// Note: this phase does NOT address ITMS-91065 ("Missing signature").
-  /// Apple's commonly-used-SDK check requires the SDK provider's origin
-  /// signature on the artifact as vended to the build; an app-identity re-sign
-  /// (this phase, or the export re-sign) does not satisfy it — proven by real
-  /// App Store submissions that were rejected with ITMS-91065 both with and
-  /// without this phase while the framework carried a valid Distribution
-  /// signature. ITMS-91065 is fixed by the signed engine artifact
-  /// (engine/build.sh --signing-identity), not here.
-  void _warnIfFlutterFrameworkUnsigned(Directory tvosProjectDir) {
+  /// This is the switch between the current pipeline and the pre-1.5 one: see
+  /// [_generateSwiftPackages] and [_warnIfLegacyEnginePipeline].
+  bool _projectEmbedsFlutterFramework(Directory tvosProjectDir) {
     final File pbxproj = tvosProjectDir
         .childDirectory('Runner.xcodeproj')
         .childFile('project.pbxproj');
-    if (!pbxproj.existsSync()) {
+    return pbxproj.existsSync() &&
+        pbxproj.readAsStringSync().contains('Embed Flutter.framework');
+  }
+
+  /// Copies the staged `Flutter.framework` into the build's products directory,
+  /// where SwiftPM target compiles look for frameworks.
+  ///
+  /// Without this (or the equivalent scheme pre-action) every plugin target
+  /// fails with "no such module 'Flutter'": the `FlutterFramework` package they
+  /// depend on carries no engine of its own by design.
+  void _stageFlutterFrameworkForProducts(
+    Directory tvosProjectDir,
+    String symroot,
+    String platformSuffix,
+  ) {
+    final Directory source = tvosProjectDir
+        .childDirectory('Flutter')
+        .childDirectory('Flutter.framework');
+    if (!source.existsSync()) {
+      // _copyFlutterFramework has already thrown if the artifact is missing;
+      // this only happens when staging was skipped entirely.
       return;
     }
-    if (pbxproj.readAsStringSync().contains('Sign Flutter.framework')) {
-      return; // Already has the signing phase.
+    final Directory productsDir = globals.fs
+        .directory(symroot)
+        .childDirectory(platformSuffix);
+    productsDir.createSync(recursive: true);
+    final ProcessResult result = globals.processManager.runSync(<String>[
+      'rsync',
+      '-a',
+      '--delete',
+      source.path,
+      '${productsDir.path}/',
+    ]);
+    if (result.exitCode != 0) {
+      throw Exception(
+        'Failed to stage Flutter.framework into ${productsDir.path}: ${result.stderr}',
+      );
+    }
+    globals.logger.printTrace('Staged Flutter.framework into ${productsDir.path}');
+  }
+
+  /// Fails the build if the engine is missing from the built app, or is present
+  /// but not validly code-signed.
+  ///
+  /// The engine reaches the bundle through the Runner target's "Embed
+  /// Flutter.framework" phase (or, in a pre-1.5 project, Xcode's implicit embed
+  /// of the binary target plus the "Sign Flutter.framework" phase). Both are
+  /// project-side, so a project that is stale, hand-edited or partially migrated
+  /// can produce an app that builds and installs from Xcode and then fails at
+  /// launch (no engine) or at App Store review with ITMS-91065 "Missing
+  /// signature". Neither failure is visible here otherwise, so check the bundle
+  /// we just produced.
+  Future<void> _verifyEmbeddedFlutterFramework(String symroot, String platformSuffix) async {
+    final Directory builtApp = globals.fs
+        .directory(symroot)
+        .childDirectory(platformSuffix)
+        .childDirectory('Runner.app');
+    if (!builtApp.existsSync()) {
+      return;
+    }
+    final Directory framework = builtApp
+        .childDirectory('Frameworks')
+        .childDirectory('Flutter.framework');
+    if (!framework.existsSync()) {
+      throwToolExit(
+        'The Flutter engine was not embedded into ${builtApp.path}.\n'
+        'The app would launch to a blank screen: nothing in the bundle provides '
+        '@rpath/Flutter.framework/Flutter.\n'
+        'Regenerate the tvOS project ("flutter-tvos create ." in the project '
+        'root) so the Runner target carries the "Embed Flutter.framework" build '
+        'phase, then build again.',
+      );
+    }
+
+    // A build that signs nothing at all (CODE_SIGNING_ALLOWED=NO and friends)
+    // is a deliberate choice, not a broken engine embed — the app itself is
+    // unsigned there too, so use it as the reference.
+    final ProcessResult appSignature = await globals.processManager.run(<String>[
+      'codesign',
+      '--verify',
+      '--strict',
+      builtApp.path,
+    ]);
+    if (appSignature.exitCode != 0) {
+      return;
+    }
+
+    final ProcessResult result = await globals.processManager.run(<String>[
+      'codesign',
+      '--verify',
+      '--strict',
+      framework.path,
+    ]);
+    if (result.exitCode != 0) {
+      throwToolExit(
+        'The Flutter engine embedded in ${builtApp.path} is not validly '
+        'code-signed:\n'
+        '${(result.stderr as String).trim()}\n'
+        'Apple rejects a build whose engine is unsigned with ITMS-91065 '
+        '("Missing signature") at Beta App Review, after upload and internal '
+        'TestFlight both succeed.\n'
+        'Regenerate the tvOS project ("flutter-tvos create ." in the project '
+        'root) so the "Embed Flutter.framework" build phase signs the engine '
+        'with your own identity, then build again.',
+      );
+    }
+  }
+
+  /// Warns if the Runner project still gets its engine from Swift Package
+  /// Manager instead of the "Prepare Flutter framework" pre-action and "Embed
+  /// Flutter.framework" build phase.
+  ///
+  /// Pre-1.5 projects vend `Flutter.xcframework` as a SwiftPM `.binaryTarget`
+  /// and rely on Xcode embedding it implicitly (unsigned — hence the separate
+  /// "Sign Flutter.framework" phase). That works, but it depends on undocumented
+  /// Xcode behaviour and leaves the signing of the engine one build phase away
+  /// from not happening at all. The current pipeline copies and signs the engine
+  /// explicitly, the way upstream Flutter does for iOS/macOS, so nudge these
+  /// projects to regenerate.
+  void _warnIfLegacyEnginePipeline(Directory tvosProjectDir) {
+    if (_projectEmbedsFlutterFramework(tvosProjectDir)) {
+      return;
+    }
+    if (!tvosProjectDir
+        .childDirectory('Runner.xcodeproj')
+        .childFile('project.pbxproj')
+        .existsSync()) {
+      return;
     }
     globals.logger.printWarning(
-      'Warning: this project\'s Xcode project has no "Sign Flutter.framework" '
-      'build phase, so the Flutter engine embedded via Swift Package Manager '
-      'keeps its SDK-origin signature instead of being re-signed with your own '
-      'identity. Device installs may fail with a code-signature error.\n'
-      'Regenerate the tvOS project ("flutter-tvos create ." in the project root) '
-      'so it re-signs the embedded engine with your own identity.',
+      'Warning: this project has no "Embed Flutter.framework" build phase, so '
+      'the Flutter engine is still embedded implicitly by Xcode from the '
+      'FlutterFramework Swift package and signed by a separate phase.\n'
+      'Regenerate the tvOS project ("flutter-tvos create ." in the project '
+      'root) to embed and sign the engine explicitly, matching upstream '
+      'Flutter. The old path keeps working until then.',
     );
   }
 
