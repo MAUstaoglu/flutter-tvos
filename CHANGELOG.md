@@ -4,6 +4,34 @@ All notable changes to flutter-tvos will be documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **The CLI signs the Flutter engine with your own Developer ID, automatically.**
+  Apple's ITMS-91065 check requires the engine to carry a
+  `Developer ID Application` signature *before* the build embeds it — signing the
+  copy inside the app is not enough, and neither is the Distribution signature
+  `xcodebuild -exportArchive` applies. Published artifacts stay unsigned, so the
+  project carries no maintainer identity and cutting a release no longer depends
+  on one person's certificate; instead every device build signs the engine
+  locally from your keychain.
+
+  Nothing to configure if you have a `Developer ID Application` certificate. If
+  you do not, the build still succeeds and warns that a submission made from it
+  will be rejected. `TVOS_ENGINE_SIGNING_IDENTITY` picks a specific identity
+  (hash or name); `TVOS_ENGINE_SKIP_SIGNING=1` turns it off.
+
+  Note that Apple lets only a team's **Account Holder** create a Developer ID
+  certificate, with a per-team limit — an Admin on someone else's team will need
+  the Account Holder to make one.
+
+  How it was established: on one afternoon, against the same app and pipeline,
+  four builds with an unsigned engine (Flutter 3.41.4, 3.44.5 and 3.47.2) were
+  each rejected with ITMS-91065 within about two minutes of external
+  submission, while the same 3.47.2 engine signed with a Developer ID cleared
+  the automated check. The bundle identifier made no difference. Upload,
+  `altool --validate-app`, processing to `VALID` and internal TestFlight all
+  pass either way — only external Beta App Review exercises this.
+
 ### Changed
 
 - **Flutter 3.47.1 → 3.47.2.** The tvOS patch set applied to the new tree with no

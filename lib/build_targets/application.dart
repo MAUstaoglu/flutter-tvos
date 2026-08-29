@@ -28,6 +28,7 @@ import 'package:package_config/package_config.dart';
 
 import '../tvos_artifacts.dart';
 import '../tvos_build_info.dart';
+import '../tvos_engine_signing.dart';
 import '../tvos_plugins.dart';
 import '../tvos_swift_package_manager.dart';
 import 'tvos_hooks.dart';
@@ -453,6 +454,26 @@ class NativeTvosBundle extends Target {
     //    Xcode guard then blesses exactly the archive it exists to stop.
     _generateXcconfigs(project, tvosProjectDir, stagedModeOverride: 'unknown');
 
+    // 0b. Sign the engine cache with the developer's own Developer ID, before
+    //     anything copies out of it. Apple's ITMS-91065 check reads the
+    //     signature on the engine embedded in the submitted app, and the
+    //     published artifacts ship unsigned so the public project carries no
+    //     maintainer identity — so the signature is applied here, on this
+    //     machine. Signing the cache (rather than the staged copy) covers both
+    //     embed paths at once, since a legacy project's SwiftPM binary target
+    //     resolves a symlink straight into it.
+    //
+    //     Must run before step 1: the copy below preserves whatever signature
+    //     the cache has at that moment, so signing afterwards would leave the
+    //     staged framework — and therefore the embedded one — unsigned.
+    //
+    //     Device builds only. Nothing looks at a Developer ID signature on the
+    //     simulator engine, and requiring the certificate for simulator work
+    //     would block developers who do not have one.
+    if (!buildInfo.simulator) {
+      _signEngineForDeveloper();
+    }
+
     // 1. Copy Flutter.framework from engine artifacts
     _copyFlutterFramework(tvosProjectDir);
 
@@ -793,6 +814,33 @@ class NativeTvosBundle extends Target {
     } on Exception {
       return null;
     }
+  }
+
+  /// Signs the extracted engine for this build's variant with the developer's
+  /// own Developer ID.
+  ///
+  /// Signs the cache rather than a per-project copy so both embed paths are
+  /// covered at once: the explicit "Embed Flutter.framework" phase copies from
+  /// tvos/Flutter/Flutter.framework (staged from here by [_copyFlutterFramework]),
+  /// while a legacy project's SwiftPM binary target resolves a symlink straight
+  /// into the cache. Signing here also means it happens once per variant rather
+  /// than on every build.
+  ///
+  /// Never fails the build: see [TvosEngineSigner.signIfPossible].
+  void _signEngineForDeveloper() {
+    final tvosArtifacts = globals.artifacts! as TvosArtifacts;
+    final String frameworkPath = tvosArtifacts.getArtifactPath(
+      Artifact.flutterFramework,
+      mode: buildInfo.buildInfo.mode,
+      environmentType: EnvironmentType.physical,
+    );
+    final signer = TvosEngineSigner(
+      fileSystem: globals.fs,
+      processManager: globals.processManager,
+      logger: globals.logger,
+      platform: globals.platform,
+    );
+    signer.signIfPossible(globals.fs.directory(frameworkPath).parent);
   }
 
   /// Copies the pre-built Flutter.framework from engine_artifacts into the
