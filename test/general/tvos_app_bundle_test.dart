@@ -366,11 +366,38 @@ void main() {
   //   * the "Embed Flutter.framework" build phase copies it into the bundle and
   //     signs it with the app's own identity.
   //
-  // The signature is what keeps the engine out of an ITMS-91065 ("Missing
-  // signature") rejection at external Beta App Review: Flutter is on Apple's
-  // commonly-used-SDK list, and an unsigned framework uploads and passes
-  // internal TestFlight before being rejected there. Upstream signs the engine
-  // it copies the same way, with the app identity rather than the SDK vendor's.
+  // The embed-phase signature is the ordinary app-identity one, the same thing
+  // upstream applies to the engine it copies; a framework that reaches the
+  // bundle unsigned fails to load. It is NOT what satisfies ITMS-91065 — that
+  // needs a Developer ID on the engine *before* this phase embeds it, which
+  // TvosEngineSigner applies to the artifact cache at build time.
+  /// The `shellScript` belonging to the named run-script build phase.
+  ///
+  /// A pbxproj holds several PBXShellScriptBuildPhase blocks, so a bare
+  /// `contains` over the whole file cannot tell which one supplied a string.
+  String shellScriptOf(String pbxproj, String phaseName) {
+    final int phase = pbxproj.indexOf('/* $phaseName */ = {');
+    expect(phase, greaterThanOrEqualTo(0), reason: 'no "$phaseName" phase definition');
+    final int keyStart = pbxproj.indexOf('shellScript = "', phase);
+    expect(keyStart, greaterThanOrEqualTo(0), reason: '"$phaseName" has no shellScript');
+    final int valueStart = keyStart + 'shellScript = "'.length;
+    // The value is a quoted pbxproj string: the terminator is the first `"`
+    // that is not backslash-escaped.
+    var i = valueStart;
+    while (i < pbxproj.length) {
+      if (pbxproj[i] == r'\') {
+        i += 2;
+        continue;
+      }
+      if (pbxproj[i] == '"') {
+        break;
+      }
+      i++;
+    }
+    expect(i, lessThan(pbxproj.length), reason: 'unterminated shellScript for "$phaseName"');
+    return pbxproj.substring(valueStart, i);
+  }
+
   group('Xcode project embeds and signs Flutter.framework', () {
     const fs = LocalFileSystem();
 
@@ -396,22 +423,35 @@ void main() {
         expect(embedFlutter, greaterThan(copyAssets),
             reason: 'Embed Flutter.framework must be listed after Copy flutter_assets');
 
-        // It copies the staged engine into the bundle...
-        expect(pbxproj, contains(r'$(PROJECT_DIR)/Flutter/Flutter.framework'));
-        expect(pbxproj, contains(r'${CODESIGNING_FOLDER_PATH}/Frameworks'));
+        // Assert against the phase's OWN shellScript, not the whole file.
+        // Over the whole pbxproj these all pass even with this phase's script
+        // emptied, because the unrelated "Embed App.framework" phase supplies
+        // the same strings — which let a deleted sign block go unnoticed.
+        final String script = shellScriptOf(pbxproj, 'Embed Flutter.framework');
+
+        // Xcode's dependency tracking for the phase names the staged engine
+        // (the $(...) form, which is what a pbxproj setting uses)...
+        expect(pbxproj, contains(r'"$(PROJECT_DIR)/Flutter/Flutter.framework",'));
+        // ...and the script itself reads it (the ${...} form the shell wants).
+        expect(script, contains(r'${PROJECT_DIR}/Flutter/Flutter.framework'));
+        expect(script, contains(r'${CODESIGNING_FOLDER_PATH}/Frameworks'));
         // ...without the compile-time-only directories...
-        expect(pbxproj, contains(r'--filter \"- Headers\"'));
-        expect(pbxproj, contains(r'--filter \"- Modules\"'));
+        expect(script, contains(r'--filter \"- Headers\"'));
+        expect(script, contains(r'--filter \"- Modules\"'));
         // ...and signs it with the app's own identity.
-        expect(pbxproj, contains(r'codesign --force --sign'));
-        expect(pbxproj, contains(r'EXPANDED_CODE_SIGN_IDENTITY'));
+        expect(script, contains(r'codesign --force --sign'));
+        expect(script, contains(r'EXPANDED_CODE_SIGN_IDENTITY'));
       });
     }
 
-    for (final relativePath in <String>[
-      'templates/app/swift/tvos.tmpl/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme.tmpl',
-      'packages/flutter_tvos/example/tvos/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme',
-    ]) {
+    const schemeToPbxproj = <String, String>{
+      'templates/app/swift/tvos.tmpl/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme.tmpl':
+          'templates/app/swift/tvos.tmpl/Runner.xcodeproj/project.pbxproj.tmpl',
+      'packages/flutter_tvos/example/tvos/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme':
+          'packages/flutter_tvos/example/tvos/Runner.xcodeproj/project.pbxproj',
+    };
+
+    schemeToPbxproj.forEach((String relativePath, String pbxprojPath) {
       test('$relativePath stages the engine in a build pre-action', () {
         final File file = fs.file(relativePath);
         expect(file.existsSync(), isTrue, reason: 'expected to find $relativePath from package root');
@@ -427,8 +467,24 @@ void main() {
         expect(scheme, contains('<EnvironmentBuildable>'));
         // It must run before the build, i.e. inside BuildAction.
         expect(scheme.indexOf('<PreActions>'), lessThan(scheme.indexOf('<BuildActionEntries>')));
+
+        // The EnvironmentBuildable is wired by raw object id. Nothing in Xcode
+        // reconciles that id with the project, so a pbxproj edit that changes
+        // the Runner target's id leaves a pre-action that silently supplies no
+        // build settings — and PROJECT_DIR / BUILT_PRODUCTS_DIR come from it.
+        final RegExpMatch? blueprint =
+            RegExp(r'BlueprintIdentifier = "([0-9A-Fa-f]+)"').firstMatch(scheme);
+        expect(blueprint, isNotNull, reason: 'pre-action has no BlueprintIdentifier');
+        final String targetId = blueprint!.group(1)!;
+
+        final String pbxproj = fs.file(pbxprojPath).readAsStringSync();
+        final int decl = pbxproj.indexOf('$targetId /* Runner */ = {');
+        expect(decl, greaterThanOrEqualTo(0),
+            reason: '$relativePath points at $targetId, which is not a Runner object in $pbxprojPath');
+        expect(pbxproj.substring(decl, decl + 200), contains('isa = PBXNativeTarget;'),
+            reason: '$targetId must be the Runner native target, not another object');
       });
-    }
+    });
   });
 
   // --- App Store validation: the template asset catalog is complete --------

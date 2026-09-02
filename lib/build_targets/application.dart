@@ -454,28 +454,10 @@ class NativeTvosBundle extends Target {
     //    Xcode guard then blesses exactly the archive it exists to stop.
     _generateXcconfigs(project, tvosProjectDir, stagedModeOverride: 'unknown');
 
-    // 0b. Sign the engine cache with the developer's own Developer ID, before
-    //     anything copies out of it. Apple's ITMS-91065 check reads the
-    //     signature on the engine embedded in the submitted app, and the
-    //     published artifacts ship unsigned so the public project carries no
-    //     maintainer identity — so the signature is applied here, on this
-    //     machine. Signing the cache (rather than the staged copy) covers both
-    //     embed paths at once, since a legacy project's SwiftPM binary target
-    //     resolves a symlink straight into it.
-    //
-    //     Must run before step 1: the copy below preserves whatever signature
-    //     the cache has at that moment, so signing afterwards would leave the
-    //     staged framework — and therefore the embedded one — unsigned.
-    //
-    //     Device builds only. Nothing looks at a Developer ID signature on the
-    //     simulator engine, and requiring the certificate for simulator work
-    //     would block developers who do not have one.
-    if (!buildInfo.simulator) {
-      _signEngineForDeveloper();
-    }
-
-    // 1. Copy Flutter.framework from engine artifacts
-    _copyFlutterFramework(tvosProjectDir);
+    // 0b + 1. Sign the engine in the artifact cache, then stage it into the
+    //         project. One step because the order between them is the
+    //         invariant — see [signAndStageEngine].
+    signAndStageEngine(tvosProjectDir);
 
     // 2. Copy flutter_assets into tvos/Flutter/
     _copyFlutterAssets(project, tvosProjectDir);
@@ -826,6 +808,30 @@ class NativeTvosBundle extends Target {
   /// into the cache. Signing here also means it happens once per variant rather
   /// than on every build.
   ///
+  /// Signs the engine in the artifact cache with the developer's own Developer
+  /// ID, then stages it into the project's `Flutter/` directory.
+  ///
+  /// These are one step because the order between them is the invariant.
+  /// Apple's ITMS-91065 check requires the engine to carry a Developer ID
+  /// signature *before* the build embeds it — an app-identity re-sign of the
+  /// embedded copy does not satisfy it. The staging copy preserves whatever
+  /// signature the cache holds at that moment, so signing after it would leave
+  /// the staged framework, and therefore the embedded one, unsigned.
+  ///
+  /// Signing the cache rather than the staged copy covers both embed paths at
+  /// once, since a legacy project's SwiftPM binary target resolves a symlink
+  /// straight into the cache.
+  @visibleForTesting
+  void signAndStageEngine(Directory tvosProjectDir) {
+    // Device builds only. Nothing looks at a Developer ID signature on the
+    // simulator engine, and requiring the certificate for simulator work would
+    // block developers who do not have one.
+    if (!buildInfo.simulator) {
+      _signEngineForDeveloper();
+    }
+    _copyFlutterFramework(tvosProjectDir);
+  }
+
   /// Never fails the build: see [TvosEngineSigner.signIfPossible].
   void _signEngineForDeveloper() {
     final tvosArtifacts = globals.artifacts! as TvosArtifacts;
