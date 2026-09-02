@@ -27,6 +27,20 @@ const String _noDeveloperId = '''
      1 valid identity found
 ''';
 
+/// A revoked certificate. `find-identity` annotates it but still counts it in
+/// the "valid identities found" total, and it is listed *before* the good
+/// Developer ID so that taking the first match would pick the wrong one.
+const String _revokedFirst = '''
+  1) EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE "Developer ID Application: Someone (TEAM123456)" (CSSMERR_TP_CERT_REVOKED)
+  2) DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD "Developer ID Application: Someone (TEAM123456)"
+     2 valid identities found
+''';
+
+const String _revokedOnly = '''
+  1) EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE "Developer ID Application: Someone (TEAM123456)" (CSSMERR_TP_CERT_REVOKED)
+     1 valid identity found
+''';
+
 const List<String> _findIdentity = <String>[
   'security',
   'find-identity',
@@ -86,6 +100,41 @@ void main() {
         const FakeCommand(command: _findIdentity, stdout: _noDeveloperId),
       ]);
       expect(_signer(fs: fileSystem, pm: pm, logger: logger).resolveIdentity(), isNull);
+    });
+
+    testWithoutContext('skips a revoked certificate in favour of a good one', () {
+      final pm = FakeProcessManager.list(<FakeCommand>[
+        const FakeCommand(command: _findIdentity, stdout: _revokedFirst),
+      ]);
+      final ({String hash, String name})? identity =
+          _signer(fs: fileSystem, pm: pm, logger: logger).resolveIdentity();
+      // codesign exits 0 with a revoked certificate, so picking it would
+      // produce a build that only fails at submission.
+      expect(identity?.hash, 'DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD');
+    });
+
+    testWithoutContext('returns null when the only Developer ID is revoked', () {
+      final pm = FakeProcessManager.list(<FakeCommand>[
+        const FakeCommand(command: _findIdentity, stdout: _revokedOnly),
+      ]);
+      expect(_signer(fs: fileSystem, pm: pm, logger: logger).resolveIdentity(), isNull);
+    });
+
+    testWithoutContext('override rejects a revoked certificate named by hash', () {
+      final pm = FakeProcessManager.list(<FakeCommand>[
+        const FakeCommand(command: _findIdentity, stdout: _revokedFirst),
+      ]);
+      expect(
+        () => _signer(
+          fs: fileSystem,
+          pm: pm,
+          logger: logger,
+          environment: <String, String>{
+            TvosEngineSigner.kIdentityEnvVar: 'EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE',
+          },
+        ).resolveIdentity(),
+        throwsA(isA<StateError>()),
+      );
     });
 
     testWithoutContext('override accepts a SHA-1 hash', () {

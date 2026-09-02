@@ -58,9 +58,18 @@ class TvosEngineSigner {
   /// duplicate certificates sharing a display name are common (a renewed cert
   /// sits alongside the one it replaced), and `codesign --sign <name>` fails
   /// with "ambiguous (matches ... and ...)" when that happens.
+  ///
+  /// A line may carry a trailing annotation such as
+  /// `(CSSMERR_TP_CERT_REVOKED)`. Those are rejected: `find-identity` counts
+  /// annotated certificates in its "N valid identities found" total, and
+  /// `codesign` signs with a revoked one and exits 0, so nothing later in the
+  /// build catches it. Any annotation disqualifies, not just revocation —
+  /// an unrecognised one is a reason to skip a certificate, not to trust it.
   static ({String hash, String name})? _parseIdentity(String line) {
-    final RegExpMatch? m = RegExp(r'\)\s+([0-9A-F]{40})\s+"([^"]+)"').firstMatch(line);
-    if (m == null) {
+    final RegExpMatch? m = RegExp(
+      r'\)\s+([0-9A-F]{40})\s+"([^"]+)"\s*(\S.*)?$',
+    ).firstMatch(line.trimRight());
+    if (m == null || m.group(3) != null) {
       return null;
     }
     return (hash: m.group(1)!, name: m.group(2)!);
@@ -134,8 +143,9 @@ class TvosEngineSigner {
     if (developerIds.isEmpty) {
       return null;
     }
-    // Duplicates here are the renewed-certificate case: same subject, different
-    // hash, either will verify. Signing by hash means picking one is safe.
+    // Revoked certificates are already gone, so duplicates here are the
+    // renewed-certificate case: same subject, different hash, either will
+    // verify. Signing by hash means picking one is safe.
     return developerIds.first;
   }
 
