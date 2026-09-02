@@ -2,6 +2,90 @@
 
 All notable changes to flutter-tvos will be documented here.
 
+## [1.9.0] - 2026-08-29
+
+### Added
+
+- **The CLI signs the Flutter engine with your own Developer ID, automatically.**
+  Apple's ITMS-91065 check requires the engine to carry a
+  `Developer ID Application` signature *before* the build embeds it — signing the
+  copy inside the app is not enough, and neither is the Distribution signature
+  `xcodebuild -exportArchive` applies. Published artifacts stay unsigned, so the
+  project carries no maintainer identity and cutting a release no longer depends
+  on one person's certificate; instead every device build signs the engine
+  locally from your keychain.
+
+  Nothing to configure if you have a `Developer ID Application` certificate. If
+  you do not, the build still succeeds and warns that a submission made from it
+  will be rejected. `TVOS_ENGINE_SIGNING_IDENTITY` picks a specific identity
+  (hash or name); `TVOS_ENGINE_SKIP_SIGNING=1` turns it off.
+
+  Note that Apple lets only a team's **Account Holder** create a Developer ID
+  certificate, with a per-team limit — an Admin on someone else's team will need
+  the Account Holder to make one.
+
+  How it was established: on one afternoon, against the same app and pipeline,
+  four builds with an unsigned engine (Flutter 3.41.4, 3.44.5 and 3.47.2) were
+  each rejected with ITMS-91065 within about two minutes of external
+  submission, while the same 3.47.2 engine signed with a Developer ID cleared
+  the automated check. The bundle identifier made no difference. Upload,
+  `altool --validate-app`, processing to `VALID` and internal TestFlight all
+  pass either way — only external Beta App Review exercises this.
+
+### Changed
+
+- **Flutter 3.47.1 → 3.47.2.** The tvOS patch set applied to the new tree with no
+  changes at all (20/20 patches, zero content churn), and none of the upstream
+  build-graph classes the CLI mirrors — `KernelSnapshot`, `CopyFlutterBundle`,
+  `DartPluginRegistrantTarget`, `AotElfRelease` — moved. Engine artifacts rebuilt
+  from the 3.47.2 tree (Dart 3.13.2), unsigned.
+
+- **The app embeds and signs the Flutter engine itself, instead of letting Xcode
+  do it from a Swift package.** This is the pipeline upstream Flutter moved back
+  to in [flutter/flutter#181739](https://github.com/flutter/flutter/pull/181739)
+  and still uses.
+
+  Until now the engine was vended to the build as a SwiftPM `.binaryTarget` on
+  `Flutter.xcframework`, pulled into the bundle transitively through the plugin
+  umbrella. Xcode embedded it but never signed it — undocumented behaviour that
+  a separate "Sign Flutter.framework" phase had to compensate for, and that
+  leaves an unsigned engine in the bundle the moment that phase does not run.
+
+  Three explicit steps replace it. `flutter-tvos build/run` stages the engine at
+  `tvos/Flutter/Flutter.framework` as before; a new **"Prepare Flutter
+  framework"** scheme pre-action (and the CLI itself) copies it into
+  `BUILT_PRODUCTS_DIR`, where SwiftPM target compiles look for frameworks; and a
+  new **"Embed Flutter.framework"** build phase copies it into the app —
+  without the compile-time-only `Headers`/`Modules` — and signs it with the
+  app's own identity. The generated `FlutterFramework` package is now empty: it
+  exists only so each plugin's `../FlutterFramework` dependency resolves.
+
+  Existing projects keep working untouched: a Runner project without the new
+  phases stays on the old binary-target package and its "Sign Flutter.framework"
+  phase, with a build warning pointing at the migration. Federated plugins need
+  no change — their manifests already declare the dependency the same way
+  upstream's do.
+
+- **Origin-signing the engine artifacts is now optional** — because the CLI
+  signs the engine locally with your own Developer ID before the build embeds
+  it (above), not because an app-identity re-sign of the embedded copy would
+  satisfy ITMS-91065. It does not. `engine/build.sh` no longer refuses to
+  `--publish` without `--signing-identity`, and `engine/verify_artifacts.sh`
+  verifies whatever signature an artifact carries rather than demanding a
+  Developer ID one — naming the authority, so an ad-hoc signature is no longer
+  reported the same way as a Developer ID. `TVOS_ENGINE_REQUIRE_ORIGIN_SIGNING=1`
+  restores the strict gate, and passing `--signing-identity` now sets it
+  automatically.
+
+### Added
+
+- **Device builds now fail if the built app has no engine, or an engine whose
+  signature does not verify.** A stale, hand-edited or partially migrated Runner
+  project can embed no engine at all, or embed one without signing it; an
+  unsigned engine uploads fine and passes internal TestFlight before being
+  rejected at external Beta App Review with ITMS-91065, so it is caught at
+  build time instead.
+
 ## [1.8.0] - 2026-08-24
 
 ### Added

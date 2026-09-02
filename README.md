@@ -8,9 +8,12 @@ A Flutter toolchain for building and running Flutter apps on **Apple TV (tvOS)**
 
 ## Current version
 
-- flutter-tvos: `1.6.0`
-- Flutter SDK: `3.47.0` (`4cf24164269a5ebf0c16a028a00727d0e77bbb05`)
-- tvOS engine artifacts: `engine-495915c579071a4ef6a5014637166d5231cb4aac` (origin-signed)
+- flutter-tvos: `1.9.0`
+- Flutter SDK: `3.47.2` (`d3b14c876900e553bc736ca19295fc09e3853e8e`)
+- tvOS engine artifacts: published unsigned — `flutter-tvos` signs the engine on
+  your machine with your own `Developer ID Application` certificate on every
+  device build, which is what Apple's ITMS-91065 check requires. See
+  "Code signing" below.
 
 The engine artifact tag is the commit that produced those artifacts, rather than
 a Flutter version. A version-shaped tag went stale as soon as one patch set was
@@ -152,6 +155,46 @@ Then inside `io_impl.dart`, branch on `Platform.isTvOS` vs `Platform.isIOS`.
 - **No `fork()`.** Apple TV disallows `fork()` entirely. Some background-work libraries are affected; Perfetto's daemonize path is already patched in our engine build.
 - **On-device debug needs a debugger attached.** Debug (JIT) now works on a physical Apple TV — `flutter-tvos run -d <appletv> --debug` gives you hot reload, hot restart, and DevTools over the wireless CoreDevice tunnel (the bundled tvOS debug engine artifact ships the `NOTIFY_DEBUGGER_ABOUT_RX_PAGES` hook lldb's attach needs). Because Apple TV is wireless-only the attach is slower than USB iOS; the **simulator remains the fast-iteration path** for debug. Release/profile on device run AOT and need no debugger.
 - **Metal-only rendering.** No OpenGL backend. Apps relying on GL-specific platform views will not work.
+
+## Code signing
+
+Apple treats Flutter as a "commonly used third-party SDK", and rejects any
+submission whose engine did not already carry a `Developer ID Application`
+signature when the build embedded it (**ITMS-91065**, *"Missing signature"*).
+Signing the copy inside the app is not enough, and neither is the Distribution
+signature `xcodebuild -exportArchive` applies. The engine artifacts published here are
+deliberately unsigned — a public project should not stamp one maintainer's
+Developer ID onto every download — so **`flutter-tvos` signs the engine on your
+machine instead**, with your own certificate, on every device build.
+
+You need a **`Developer ID Application`** certificate in your login keychain.
+Nothing to configure: the CLI finds it, signs the engine with
+`--timestamp --options runtime` (matching how flutter.dev signs its own), and
+skips the work on later builds. Simulator builds never need it.
+
+```sh
+security find-identity -v -p codesigning | grep "Developer ID Application"
+```
+
+Nothing listed? Create one at
+[developer.apple.com → Certificates](https://developer.apple.com/account/resources/certificates).
+Apple allows only a team's **Account Holder** to create Developer ID
+certificates, and caps how many a team may have — if you are an Admin on someone
+else's team, ask the Account Holder for one.
+
+Without a certificate the build still succeeds and warns you; the app runs
+locally and on internal TestFlight, then fails external Beta App Review. That
+late failure is the whole reason this is automated.
+
+| Variable | Effect |
+|---|---|
+| `TVOS_ENGINE_SIGNING_IDENTITY` | Use a specific identity (SHA-1 hash, or a name that matches exactly one certificate). |
+| `TVOS_ENGINE_SKIP_SIGNING=1` | Skip signing entirely, warning included. |
+
+A caution about testing: upload, `altool --validate-app`, App Store Connect
+processing to `VALID`, and internal TestFlight **all succeed** with an unsigned
+engine. Only pushing a build to an external TestFlight group exercises this
+check, so that is the only way to confirm a submission is really clean.
 
 ## Add tvOS support to an existing plugin
 

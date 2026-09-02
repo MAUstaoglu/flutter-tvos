@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Phase 2 of tvOS Swift Package Manager support: the generators that produce
-// the `FlutterFramework` binary-target package and the
+// The generators that produce the (empty) `FlutterFramework` package and the
 // `FlutterGeneratedPluginSwiftPackage` umbrella a tvOS app build consumes.
 
 import 'package:file/memory.dart';
@@ -22,30 +21,80 @@ void main() {
   });
 
   group('FlutterFramework package', () {
-    test('writes a binary-target manifest and symlinks the xcframework', () {
-      final Directory xcframework = fs.directory('/engine/Flutter.xcframework')
-        ..createSync(recursive: true);
+    // The package is empty on purpose: it exists so the `../FlutterFramework`
+    // dependency every federated plugin manifest declares keeps resolving. The
+    // engine reaches the compiler through BUILT_PRODUCTS_DIR and the bundle
+    // through the Runner target, exactly as upstream Flutter does since
+    // flutter/flutter#181739. A `.binaryTarget` here would put the engine back
+    // in Xcode's hands, which is what that PR moved away from.
+    test('writes an empty package with a sources directory', () {
       final Directory pkg = fs.directory('/app/tvos/Flutter/ephemeral/Packages/FlutterFramework');
 
-      spm.generateFlutterFrameworkPackage(packageDirectory: pkg, xcframework: xcframework);
+      spm.generateFlutterFrameworkPackage(packageDirectory: pkg);
 
       final String manifest = pkg.childFile('Package.swift').readAsStringSync();
       expect(manifest, contains('name: "FlutterFramework"'));
-      expect(manifest, contains('.binaryTarget(name: "FlutterFramework", path: "Flutter.xcframework")'));
+      expect(manifest, contains('.library(name: "FlutterFramework", targets: ["FlutterFramework"])'));
+      expect(manifest, contains('.target(name: "FlutterFramework")'));
+      expect(manifest, isNot(contains('binaryTarget')));
 
-      final Link link = pkg.childLink('Flutter.xcframework');
-      expect(link.existsSync(), isTrue);
-      expect(link.targetSync(), '/engine/Flutter.xcframework');
+      // SwiftPM refuses a target without a sources directory.
+      expect(
+        pkg.childDirectory('Sources').childDirectory('FlutterFramework')
+            .childFile('FlutterFramework.swift').existsSync(),
+        isTrue,
+      );
+      expect(pkg.childLink('Flutter.xcframework').existsSync(), isFalse);
     });
 
-    test('is re-runnable (refreshes the symlink, no error)', () {
+    test('drops the xcframework symlink left by a pre-1.5 project', () {
       final Directory xcframework = fs.directory('/engine/Flutter.xcframework')
         ..createSync(recursive: true);
       final Directory pkg = fs.directory('/app/Packages/FlutterFramework');
-      spm.generateFlutterFrameworkPackage(packageDirectory: pkg, xcframework: xcframework);
-      // Second run must not throw on the existing symlink.
-      spm.generateFlutterFrameworkPackage(packageDirectory: pkg, xcframework: xcframework);
+
+      spm.generateFlutterFrameworkPackage(packageDirectory: pkg, legacyXcframework: xcframework);
       expect(pkg.childLink('Flutter.xcframework').existsSync(), isTrue);
+
+      spm.generateFlutterFrameworkPackage(packageDirectory: pkg);
+      expect(pkg.childLink('Flutter.xcframework').existsSync(), isFalse);
+    });
+
+    test('is re-runnable', () {
+      final Directory pkg = fs.directory('/app/Packages/FlutterFramework');
+      spm.generateFlutterFrameworkPackage(packageDirectory: pkg);
+      spm.generateFlutterFrameworkPackage(packageDirectory: pkg);
+      expect(pkg.childFile('Package.swift').existsSync(), isTrue);
+    });
+
+    group('legacy (pre-1.5) projects', () {
+      // A project generated before the "Embed Flutter.framework" build phase
+      // has nothing else that puts the engine in the bundle, so it stays on the
+      // binary target Xcode embeds implicitly until it is regenerated.
+      test('writes a binary-target manifest and symlinks the xcframework', () {
+        final Directory xcframework = fs.directory('/engine/Flutter.xcframework')
+          ..createSync(recursive: true);
+        final Directory pkg = fs.directory('/app/tvos/Flutter/ephemeral/Packages/FlutterFramework');
+
+        spm.generateFlutterFrameworkPackage(packageDirectory: pkg, legacyXcframework: xcframework);
+
+        final String manifest = pkg.childFile('Package.swift').readAsStringSync();
+        expect(manifest, contains('name: "FlutterFramework"'));
+        expect(manifest, contains('.binaryTarget(name: "FlutterFramework", path: "Flutter.xcframework")'));
+
+        final Link link = pkg.childLink('Flutter.xcframework');
+        expect(link.existsSync(), isTrue);
+        expect(link.targetSync(), '/engine/Flutter.xcframework');
+      });
+
+      test('is re-runnable (refreshes the symlink, no error)', () {
+        final Directory xcframework = fs.directory('/engine/Flutter.xcframework')
+          ..createSync(recursive: true);
+        final Directory pkg = fs.directory('/app/Packages/FlutterFramework');
+        spm.generateFlutterFrameworkPackage(packageDirectory: pkg, legacyXcframework: xcframework);
+        // Second run must not throw on the existing symlink.
+        spm.generateFlutterFrameworkPackage(packageDirectory: pkg, legacyXcframework: xcframework);
+        expect(pkg.childLink('Flutter.xcframework').existsSync(), isTrue);
+      });
     });
   });
 
