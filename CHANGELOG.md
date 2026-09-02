@@ -66,22 +66,25 @@ All notable changes to flutter-tvos will be documented here.
   no change — their manifests already declare the dependency the same way
   upstream's do.
 
-- **Origin-signing the engine artifacts is now optional.** Apple's ITMS-91065
-  check reads the signature on the engine copy inside the submitted app, which
-  is the app's own — upstream destroys FLUTTER.IO's Developer ID signature by
-  thinning and re-signing, and those apps pass review. `engine/build.sh` no
-  longer refuses to `--publish` without `--signing-identity`, and
-  `engine/verify_artifacts.sh` verifies whatever signature an artifact carries
-  rather than demanding a Developer ID one (`TVOS_ENGINE_REQUIRE_ORIGIN_SIGNING=1`
-  restores the strict gate).
+- **Origin-signing the engine artifacts is now optional** — because the CLI
+  signs the engine locally with your own Developer ID before the build embeds
+  it (above), not because an app-identity re-sign of the embedded copy would
+  satisfy ITMS-91065. It does not. `engine/build.sh` no longer refuses to
+  `--publish` without `--signing-identity`, and `engine/verify_artifacts.sh`
+  verifies whatever signature an artifact carries rather than demanding a
+  Developer ID one — naming the authority, so an ad-hoc signature is no longer
+  reported the same way as a Developer ID. `TVOS_ENGINE_REQUIRE_ORIGIN_SIGNING=1`
+  restores the strict gate, and passing `--signing-identity` now sets it
+  automatically.
 
 ### Added
 
 - **Device builds now fail if the built app has no engine, or an engine whose
-  signature does not verify.** With the artifact no longer guaranteed to be
-  signed, the app-side signature is the only one; an unsigned engine uploads
-  fine and passes internal TestFlight before being rejected at external Beta App
-  Review with ITMS-91065, so it is caught at build time instead.
+  signature does not verify.** A stale, hand-edited or partially migrated Runner
+  project can embed no engine at all, or embed one without signing it; an
+  unsigned engine uploads fine and passes internal TestFlight before being
+  rejected at external Beta App Review with ITMS-91065, so it is caught at
+  build time instead.
 
 ## [1.8.0] - 2026-08-24
 

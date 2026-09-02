@@ -159,8 +159,10 @@ Then inside `io_impl.dart`, branch on `Platform.isTvOS` vs `Platform.isIOS`.
 ## Code signing
 
 Apple treats Flutter as a "commonly used third-party SDK", and rejects any
-submission whose embedded engine is not signed by the SDK's provider
-(**ITMS-91065**, *"Missing signature"*). The engine artifacts published here are
+submission whose engine did not already carry a `Developer ID Application`
+signature when the build embedded it (**ITMS-91065**, *"Missing signature"*).
+Signing the copy inside the app is not enough, and neither is the Distribution
+signature `xcodebuild -exportArchive` applies. The engine artifacts published here are
 deliberately unsigned — a public project should not stamp one maintainer's
 Developer ID onto every download — so **`flutter-tvos` signs the engine on your
 machine instead**, with your own certificate, on every device build.
