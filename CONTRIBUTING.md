@@ -46,6 +46,18 @@ flutter/bin/dart test test/
 
 There are 74 unit tests in `test/general/`. They use Flutter's own test infrastructure (`FakeProcessManager`, `testWithoutContext`, `testUsingContext`) and do not require a connected device or simulator.
 
+### Editing the CLI itself
+
+`flutter-tvos` runs a snapshot compiled to `bin/cache/flutter-tvos.snapshot`, and `bin/internal/shared.sh` only recompiles it when the git revision changes. **An edit under `lib/` or `bin/` therefore does nothing until you remove it:**
+
+```bash
+rm bin/cache/flutter-tvos.snapshot
+```
+
+Worth knowing before you lose an afternoon to it. The stale snapshot does not announce itself — your change appears to have run and had no effect, so the same build fails the same way, byte for byte, and it reads as a wrong fix rather than one that never executed.
+
+(The revision is only stale-checked this way in a git checkout. A non-git install hashes the contents of `bin/` and `lib/` instead, and needs nothing.)
+
 ## Static Analysis
 
 ```bash
