@@ -2,7 +2,7 @@
 
 All notable changes to flutter-tvos will be documented here.
 
-## [Unreleased]
+## [1.10.0] - 2026-09-03
 
 ### Added
 
