@@ -41,12 +41,12 @@ Internal-only changes (refactors, CI, test-only changes) don't need a changelog 
 The Flutter SDK is bootstrapped automatically into `flutter/` when you first run any `flutter-tvos` command. Once it is present, run the full test suite from the `flutter-tvos/` directory:
 
 ```bash
-flutter/bin/dart test test/
+TMPDIR="$(cd "${TMPDIR:-/tmp}" && pwd -P)" flutter/bin/dart test test/
 ```
 
-There are roughly 450 unit tests across the 40 files in `test/general/`. They use Flutter's own test infrastructure (`FakeProcessManager`, `testWithoutContext`, `testUsingContext`) and do not require a connected device or simulator.
+There are roughly 450 unit tests across the 40 files in `test/general/`. They use Flutter's own test infrastructure (`FakeProcessManager`, `testWithoutContext`, `testUsingContext`) and do not require a connected device or simulator. **The suite is green** — anything failing is yours.
 
-**The suite is not currently green.** `dev` reports 58 failures at HEAD, so take a baseline before you start and compare against it rather than against zero — otherwise pre-existing failures read as yours.
+**On macOS, keep the `TMPDIR` prefix.** Without it roughly 58 tests fail, and they fail in a way that looks like real breakage rather than an environment problem. Flutter's test harness installs an FS guard that resolves symlinks when computing the allowed temp root but not on the path it checks; `$TMPDIR` is `/var/folders/…` and `/var` is a symlink to `/private/var`, so the two never compare equal. CI passes the resolved form for this reason. Do not reach for `FLUTTER_TEST_DISABLE_FS_GUARD` instead — see `test/README.md`.
 
 ### Editing the CLI itself
 
