@@ -405,15 +405,6 @@ class ReleaseTvosApplication extends Target {
   }
 }
 
-/// Orchestrates the native tvOS build via xcodebuild.
-///
-/// Build steps:
-/// 1. Copy Flutter.framework from engine artifacts into tvos/Flutter/
-/// 2. Copy flutter_assets into tvos/Flutter/flutter_assets/
-/// 3. Generate GeneratedPluginRegistrant.h/.m
-/// 4. Generate xcconfig files
-/// 5. Run pod install if Podfile exists
-/// 6. Invoke xcodebuild targeting appletvos or appletvsimulator SDK
 /// App Store Connect API credentials for `xcodebuild`, read from [environment].
 ///
 /// `-allowProvisioningUpdates` lets Xcode create or refresh a provisioning
@@ -433,46 +424,122 @@ class ReleaseTvosApplication extends Target {
 ///   APP_STORE_CONNECT_ISSUER_ID  the issuer id
 ///
 /// Returns an empty list otherwise, so a machine with a working Xcode account
-/// behaves exactly as before. Only the key *id* is ever logged; the key's
-/// contents are read by xcodebuild, never by this process.
+/// behaves exactly as before. The distinction that matters is between having
+/// configured *nothing* and having configured *something broken*: the second
+/// is always reported, because it is otherwise indistinguishable from the
+/// first and the build goes on to fail minutes later with the misleading
+/// capability error above.
+///
+/// The `.p8` contents never pass through this process -- only the path is
+/// read, and xcodebuild opens the file itself. The path, key id and issuer id
+/// are not secret and do appear in output: on the success line here, and in
+/// xcodebuild's own echoed command line, which the caller dumps on failure.
 @visibleForTesting
 List<String> resolveAuthenticationArgs(
   Map<String, String> environment,
   FileSystem fileSystem,
   Logger logger,
 ) {
-  final String? keyPath = environment['APP_STORE_CONNECT_KEY_PATH'];
-  final String? keyId = environment['APP_STORE_CONNECT_KEY_ID'];
-  final String? issuerId = environment['APP_STORE_CONNECT_ISSUER_ID'];
-  if (keyPath == null ||
-      keyId == null ||
-      issuerId == null ||
-      keyPath.isEmpty ||
-      keyId.isEmpty ||
-      issuerId.isEmpty) {
+  const pathVar = 'APP_STORE_CONNECT_KEY_PATH';
+  const idVar = 'APP_STORE_CONNECT_KEY_ID';
+  const issuerVar = 'APP_STORE_CONNECT_ISSUER_ID';
+
+  // Trim: a value sourced from `$(cat keyid)`, a secret store or a here-doc
+  // commonly carries a trailing newline, and forwarding one produces a
+  // baffling failure -- in a path, the invisible `\n` renders a warning whose
+  // path looks perfectly correct.
+  final String path = (environment[pathVar] ?? '').trim();
+  final String id = (environment[idVar] ?? '').trim();
+  final String issuer = (environment[issuerVar] ?? '').trim();
+
+  if (path.isEmpty || id.isEmpty || issuer.isEmpty) {
+    // Distinguish "never configured" from "configured, but not usably". A
+    // half-set trio must not produce half a flag set -- xcodebuild rejects
+    // the key arguments unless all three are present -- but going quiet about
+    // it is the very failure this function exists to prevent. Note the test
+    // is *presence in the environment*, not a non-empty value: an undefined
+    // GitHub Actions secret interpolates to the empty string, so all three
+    // variables are set and the operator has demonstrably configured this.
+    final missing = <String>[
+      if (path.isEmpty) pathVar,
+      if (id.isEmpty) idVar,
+      if (issuer.isEmpty) issuerVar,
+    ];
+    final bool configuredSomething = <String>[pathVar, idVar, issuerVar]
+        .any(environment.containsKey);
+    if (configuredSomething) {
+      logger.printWarning(
+        'App Store Connect API key authentication is partly configured: '
+        '${missing.join(', ')} ${missing.length == 1 ? 'is' : 'are'} unset or '
+        'empty. xcodebuild needs all three, so none are being forwarded and '
+        'provisioning falls back to the Xcode account. (An undefined CI secret '
+        'arrives as an empty string, and the third variable is '
+        '$issuerVar -- not APP_STORE_CONNECT_KEY_ISSUER_ID.)',
+      );
+    }
     return const <String>[];
   }
-  if (!fileSystem.file(keyPath).existsSync()) {
-    // Set but wrong is worth saying out loud: silently falling back looks
-    // identical to never having configured it, and the build then fails much
-    // later with the misleading capability error described above.
+
+  // A literal `~` only means the home directory to a shell. A CI `env:` block,
+  // a quoted assignment, a `.env` file and an Xcode scheme variable all
+  // deliver it verbatim, where it would otherwise be resolved against the cwd
+  // into `/~/...` and never exist.
+  final String expanded = _expandTilde(path, environment);
+  // `existsSync` resolves relative paths against *this* process's cwd, while
+  // xcodebuild below runs with `workingDirectory: tvosProjectDir.path`. Make
+  // it absolute here or a relative key path passes the check and is then
+  // handed to xcodebuild one directory deeper.
+  final String resolved = fileSystem.path.absolute(expanded);
+
+  if (!fileSystem.file(resolved).existsSync()) {
     logger.printWarning(
-      'APP_STORE_CONNECT_KEY_PATH is set but $keyPath does not exist; '
-      'falling back to the Xcode account for provisioning.',
+      '$pathVar is set but $resolved does not exist; falling back to the '
+      'Xcode account for provisioning.'
+      '${path.startsWith('~') && expanded == path ? ' (The leading `~` was '
+          'passed through literally and no HOME is set to expand it against; '
+          'use an absolute path.)' : ''}',
     );
     return const <String>[];
   }
-  logger.printTrace('Authenticating xcodebuild with App Store Connect API key $keyId.');
+
+  // printStatus, not printTrace: StdoutLogger.printTrace is a no-op, so a
+  // trace here would leave "working", "half-configured" and "never
+  // configured" indistinguishable at default verbosity -- and this runs once
+  // per device build, not per file.
+  logger.printStatus('Authenticating xcodebuild with App Store Connect API key $id.');
   return <String>[
     '-authenticationKeyPath',
-    fileSystem.path.absolute(keyPath),
+    resolved,
     '-authenticationKeyID',
-    keyId,
+    id,
     '-authenticationKeyIssuerID',
-    issuerId,
+    issuer,
   ];
 }
 
+/// Resolves a leading `~` or `~/` against `HOME`, leaving every other path
+/// untouched. Returns [path] unchanged when there is no `HOME` to expand
+/// against, so the caller can tell the two cases apart.
+String _expandTilde(String path, Map<String, String> environment) {
+  if (path != '~' && !path.startsWith('~/')) {
+    return path;
+  }
+  final String home = (environment['HOME'] ?? '').trim();
+  if (home.isEmpty) {
+    return path;
+  }
+  return path == '~' ? home : '$home/${path.substring(2)}';
+}
+
+/// Orchestrates the native tvOS build via xcodebuild.
+///
+/// Build steps:
+/// 1. Copy Flutter.framework from engine artifacts into tvos/Flutter/
+/// 2. Copy flutter_assets into tvos/Flutter/flutter_assets/
+/// 3. Generate GeneratedPluginRegistrant.h/.m
+/// 4. Generate xcconfig files
+/// 5. Run pod install if Podfile exists
+/// 6. Invoke xcodebuild targeting appletvos or appletvsimulator SDK
 class NativeTvosBundle extends Target {
   NativeTvosBundle(this.buildInfo, this.targetFile);
 
@@ -585,41 +652,34 @@ class NativeTvosBundle extends Target {
     // Code signing settings for physical device builds
     final List<String> signingArgs = await _resolveSigningArgs(tvosProjectDir, buildInfo.simulator);
 
-    final Status xcodeStatus = globals.logger.startProgress('Running Xcode build...');
-    ProcessResult result;
-    try {
-      result = await globals.processManager.run(<String>[
-        'xcodebuild',
-        if (hasWorkspace) ...<String>['-workspace', 'Runner.xcworkspace'] else ...<String>[
-          '-project',
-          'Runner.xcodeproj',
-        ],
-        '-scheme',
-        'Runner',
-        '-configuration',
-        configuration,
-        '-sdk',
-        buildInfo.sdkName,
-        'SYMROOT=$symroot',
-        'COMPILER_INDEX_STORE_ENABLE=NO',
-        'ARCHS=arm64',
-        ...signingArgs,
-        // Mirror upstream `flutter build ios`: let Xcode create/update
-        // the provisioning profile for automatic signing on a physical
-        // device. Without this, a device build fails with "Automatic
-        // signing is disabled and unable to generate a profile … pass
-        // -allowProvisioningUpdates". Not used for the simulator, which
-        // is not code-signed.
-        if (!buildInfo.simulator) '-allowProvisioningUpdates',
-        // ...and give it something to authenticate *with*.
-        if (!buildInfo.simulator)
-          ...resolveAuthenticationArgs(
+    // Resolved *before* startProgress below, not inside the argument list:
+    // this can warn, and a warning raised under the spinner is emitted at the
+    // top of a multi-minute build — then buried under xcodebuild's full
+    // stdout and stderr if the build fails. Same reasoning as the migration
+    // guards further down, which are deliberately emitted after the build.
+    final List<String> authenticationArgs = buildInfo.simulator
+        ? const <String>[]
+        : resolveAuthenticationArgs(
             globals.platform.environment,
             globals.fs,
             globals.logger,
-          ),
-        'build',
-      ], workingDirectory: tvosProjectDir.path);
+          );
+
+    final Status xcodeStatus = globals.logger.startProgress('Running Xcode build...');
+    ProcessResult result;
+    try {
+      result = await globals.processManager.run(
+        xcodebuildArgs(
+          hasWorkspace: hasWorkspace,
+          configuration: configuration,
+          sdkName: buildInfo.sdkName,
+          symroot: symroot,
+          isSimulator: buildInfo.simulator,
+          signingArgs: signingArgs,
+          authenticationArgs: authenticationArgs,
+        ),
+        workingDirectory: tvosProjectDir.path,
+      );
     } finally {
       xcodeStatus.stop();
     }
@@ -1773,6 +1833,52 @@ class NativeTvosBundle extends Target {
       sdkName.contains('simulator')
           ? '-mtvos-simulator-version-min=$_kTvosMinimumOSVersion'
           : '-mtvos-version-min=$_kTvosMinimumOSVersion';
+
+  /// The full `xcodebuild` argv for the native build.
+  ///
+  /// Extracted from [build] so the wiring is testable: that signing and
+  /// authentication arguments actually reach xcodebuild, and that neither is
+  /// passed on a simulator build. [authenticationArgs] comes from
+  /// [resolveAuthenticationArgs], which the caller resolves ahead of the
+  /// progress spinner so its warnings are not buried.
+  @visibleForTesting
+  static List<String> xcodebuildArgs({
+    required bool hasWorkspace,
+    required String configuration,
+    required String sdkName,
+    required String symroot,
+    required bool isSimulator,
+    required List<String> signingArgs,
+    required List<String> authenticationArgs,
+  }) {
+    return <String>[
+      'xcodebuild',
+      if (hasWorkspace) ...<String>['-workspace', 'Runner.xcworkspace'] else ...<String>[
+        '-project',
+        'Runner.xcodeproj',
+      ],
+      '-scheme',
+      'Runner',
+      '-configuration',
+      configuration,
+      '-sdk',
+      sdkName,
+      'SYMROOT=$symroot',
+      'COMPILER_INDEX_STORE_ENABLE=NO',
+      'ARCHS=arm64',
+      ...signingArgs,
+      // Mirror upstream `flutter build ios`: let Xcode create/update
+      // the provisioning profile for automatic signing on a physical
+      // device. Without this, a device build fails with "Automatic
+      // signing is disabled and unable to generate a profile … pass
+      // -allowProvisioningUpdates". Not used for the simulator, which
+      // is not code-signed.
+      if (!isSimulator) '-allowProvisioningUpdates',
+      // ...and give it something to authenticate *with*.
+      if (!isSimulator) ...authenticationArgs,
+      'build',
+    ];
+  }
 
   /// `xcrun cc` argv that assembles the gen_snapshot output to an object file.
   ///
