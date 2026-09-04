@@ -32,13 +32,25 @@ All notable changes to flutter-tvos will be documented here.
   export APP_STORE_CONNECT_ISSUER_ID=<issuer-uuid>
   ```
 
-  Absent or incomplete, nothing is added and a machine with a working Xcode
-  account behaves exactly as before. Set but pointing at a file that does not
-  exist earns a warning rather than a silent fallback — staying quiet there is
-  indistinguishable from never having configured it, and the build goes on to
-  fail with the capability message above, minutes later and nowhere near the
-  cause. Only the key id is ever logged; the key's contents are read by
-  xcodebuild, never by the CLI.
+  Values are trimmed, and a leading `~` is expanded against `HOME` — an
+  interactive shell expands one before the CLI ever sees it, but a CI `env:`
+  block, a quoted assignment, a `.env` file and an Xcode scheme variable all
+  deliver it literally.
+
+  Absent entirely, nothing is added and a machine with a working Xcode account
+  behaves exactly as before, silently. Anything *between* that and a working
+  setup is reported: a partly-set trio, a value that is empty rather than
+  absent (which is how an undefined CI secret arrives), or a key path that
+  does not exist. Staying quiet in those cases is indistinguishable from never
+  having configured it, and the build goes on to fail with the capability
+  message above, minutes later and nowhere near the cause. A successful
+  handover names the key id at default verbosity, so "working" and
+  "half-configured" can be told apart from the log.
+
+  The `.p8` contents never pass through the CLI — only the path is read, and
+  xcodebuild opens the file itself. The path, key id and issuer id are not
+  secret and do appear in output, both on that success line and in
+  xcodebuild's own echoed command line, which is dumped on a failed build.
 
   How it was established: an Apple TV device build of an app carrying
   `com.apple.developer.game-center` failed with the message above. The App ID

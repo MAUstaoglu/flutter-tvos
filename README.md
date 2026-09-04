@@ -196,6 +196,43 @@ processing to `VALID`, and internal TestFlight **all succeed** with an unsigned
 engine. Only pushing a build to an external TestFlight group exercises this
 check, so that is the only way to confirm a submission is really clean.
 
+### Provisioning on a machine with no Xcode account
+
+A device build passes `-allowProvisioningUpdates` so Xcode can create or refresh
+the provisioning profile. On its own that only works through a signed-in Xcode
+account — on CI, or on a machine that only holds an API key, xcodebuild cannot
+fetch the profile and quietly settles for a cached **wildcard** one. Any app
+with an entitlement then fails with a message naming the capability the
+wildcard lacks rather than the credential that is actually missing:
+
+```
+error: Provisioning profile "tvOS Team Provisioning Profile: *"
+doesn't include the Game Center capability.
+```
+
+Set all three of these and the key is forwarded to xcodebuild instead:
+
+| Variable | Effect |
+|---|---|
+| `APP_STORE_CONNECT_KEY_PATH` | Path to the `.p8` private key. `~` is expanded. |
+| `APP_STORE_CONNECT_KEY_ID` | The key's id, e.g. `ABC1234567`. |
+| `APP_STORE_CONNECT_ISSUER_ID` | The issuer id (a UUID). Note this one has no `KEY_`. |
+
+```sh
+export APP_STORE_CONNECT_KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_ABC1234567.p8
+export APP_STORE_CONNECT_KEY_ID=ABC1234567
+export APP_STORE_CONNECT_ISSUER_ID=00000000-1111-2222-3333-444444444444
+```
+
+xcodebuild requires all three or none, so a partial set is not forwarded — but
+it is reported, as is an empty value (how an undefined CI secret arrives) and a
+key path that does not exist. Set none of them and nothing changes: a machine
+with a working Xcode account behaves exactly as before.
+
+The `.p8` contents never pass through the CLI; only the path is read, and
+xcodebuild opens the file itself. The path, key id and issuer id are not secret
+and do appear in build output.
+
 ## Add tvOS support to an existing plugin
 
 If a plugin already implements iOS or macOS, `flutter-tvos plugin port`
