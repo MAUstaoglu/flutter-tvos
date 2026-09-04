@@ -4,6 +4,33 @@ All notable changes to flutter-tvos will be documented here.
 
 ## [1.10.0] - 2026-09-03
 
+### Fixed
+
+- **The engine is now signed with your `Apple Distribution` certificate**,
+  instead of `Developer ID Application`. 1.9.0 stopped publishing origin-signed
+  artifacts and signs the engine locally instead, but it would only sign with a
+  Developer ID — a certificate only a team's Account Holder can create, subject
+  to a per-team cap, and one a tvOS developer has no other reason to hold. A
+  developer without one got a warning on an otherwise successful build and an
+  unsigned engine in the bundle, then ITMS-91065 at submission. That is a
+  regression against 1.4.0-1.8.0, where the published artifact carried a
+  signature and nothing was required of the developer.
+
+  `Apple Distribution` is the certificate every developer who can upload to
+  TestFlight already has, so signing now asks nothing extra of anyone. Verified
+  end to end against Apple: a tvOS build whose engine was signed
+  `Apple Distribution` before embedding processed to `VALID` and cleared
+  external testing, where the same build with an unsigned engine is rejected.
+
+  `Developer ID Application` also satisfies the check and is what flutter.dev
+  signs its own engine with, but it is no longer used: nobody shipping a tvOS
+  app needs one, so accepting it would only add a branch that almost never
+  fires. A development certificate is refused, as it is not known to satisfy
+  the check.
+
+  No action is needed on an existing project — signing happens in the artifact
+  cache on every device build, so upgrading the CLI is enough.
+
 ### Added
 
 - **`xcodebuild` can authenticate with an App Store Connect API key.**

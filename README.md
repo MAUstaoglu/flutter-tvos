@@ -11,9 +11,9 @@ A Flutter toolchain for building and running Flutter apps on **Apple TV (tvOS)**
 - flutter-tvos: `1.10.0`
 - Flutter SDK: `3.47.2` (`d3b14c876900e553bc736ca19295fc09e3853e8e`)
 - tvOS engine artifacts: published unsigned — `flutter-tvos` signs the engine on
-  your machine with your own `Developer ID Application` certificate on every
-  device build, which is what Apple's ITMS-91065 check requires. See
-  "Code signing" below.
+  your machine with your own `Apple Distribution` certificate on every device
+  build, which is what Apple's ITMS-91065 check requires. See "Code signing"
+  below.
 
 The engine artifact tag is the commit that produced those artifacts, rather than
 a Flutter version. A version-shaped tag went stale as soon as one patch set was
@@ -159,28 +159,32 @@ Then inside `io_impl.dart`, branch on `Platform.isTvOS` vs `Platform.isIOS`.
 ## Code signing
 
 Apple treats Flutter as a "commonly used third-party SDK", and rejects any
-submission whose engine did not already carry a `Developer ID Application`
-signature when the build embedded it (**ITMS-91065**, *"Missing signature"*).
-Signing the copy inside the app is not enough, and neither is the Distribution
-signature `xcodebuild -exportArchive` applies. The engine artifacts published here are
-deliberately unsigned — a public project should not stamp one maintainer's
-Developer ID onto every download — so **`flutter-tvos` signs the engine on your
-machine instead**, with your own certificate, on every device build.
+submission whose engine did not already carry a signature when the build
+embedded it (**ITMS-91065**, *"Missing signature"*). Signing the copy inside the
+app is not enough, and neither is the signature `xcodebuild -exportArchive`
+applies. The engine artifacts published here are deliberately unsigned — a
+public project should not stamp one maintainer's identity onto every download —
+so **`flutter-tvos` signs the engine on your machine instead**, with your own
+certificate, on every device build.
 
-You need a **`Developer ID Application`** certificate in your login keychain.
-Nothing to configure: the CLI finds it, signs the engine with
-`--timestamp --options runtime` (matching how flutter.dev signs its own), and
-skips the work on later builds. Simulator builds never need it.
+**Usually there is nothing to do.** The CLI signs with your `Apple Distribution`
+certificate — the one you already need in order to upload to TestFlight at all —
+using `--timestamp --options runtime`, and skips the work on later builds.
+Simulator builds never need it.
 
 ```sh
-security find-identity -v -p codesigning | grep "Developer ID Application"
+security find-identity -v -p codesigning | grep "Apple Distribution"
 ```
 
-Nothing listed? Create one at
+`Developer ID Application` also satisfies the check — it is what flutter.dev
+signs its own engine with — but flutter-tvos does not use it: only a team's
+Account Holder can create one, and no tvOS developer needs one otherwise. A
+*development* certificate is deliberately not used either; it is not known to
+satisfy the check.
+
+Nothing listed at all? Create an Apple Distribution certificate in Xcode
+(**Settings → Accounts → Manage Certificates**) or at
 [developer.apple.com → Certificates](https://developer.apple.com/account/resources/certificates).
-Apple allows only a team's **Account Holder** to create Developer ID
-certificates, and caps how many a team may have — if you are an Admin on someone
-else's team, ask the Account Holder for one.
 
 Without a certificate the build still succeeds and warns you; the app runs
 locally and on internal TestFlight, then fails external Beta App Review. That
